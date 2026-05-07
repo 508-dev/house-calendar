@@ -1,10 +1,7 @@
-import "server-only";
-
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { cookies } from "next/headers";
-import type { NextResponse } from "next/server";
 import type { AppConfig } from "@/lib/config/config";
 import { serverEnv } from "./env";
+import { appendSetCookie, readCookie, serializeCookie } from "./http-cookies";
 
 const VIEWER_ACCESS_COOKIE = "house_calendar_viewer_access";
 const VIEWER_ACCESS_DURATION_DAYS = 30;
@@ -31,6 +28,10 @@ export function isViewerAccessPasswordEnabled(config: AppConfig): boolean {
   return config.viewerAccess.mode === "password";
 }
 
+export function isViewerAccessPasswordConfigured(): boolean {
+  return Boolean(serverEnv.VIEWER_PASSWORD);
+}
+
 export function verifyViewerPassword(password: string): boolean {
   if (!serverEnv.VIEWER_PASSWORD) {
     return false;
@@ -47,6 +48,7 @@ function buildViewerAccessToken(password: string): string {
 
 export async function getViewerAccessState(
   config: AppConfig,
+  cookieHeader?: string | null,
 ): Promise<ViewerAccessState> {
   if (!isViewerAccessPasswordEnabled(config)) {
     return {
@@ -64,8 +66,7 @@ export async function getViewerAccessState(
     };
   }
 
-  const cookieStore = await cookies();
-  const token = cookieStore.get(VIEWER_ACCESS_COOKIE)?.value;
+  const token = readCookie(cookieHeader, VIEWER_ACCESS_COOKIE);
 
   return {
     configured: true,
@@ -79,20 +80,23 @@ export async function getViewerAccessState(
   };
 }
 
-export function setViewerAccessCookie(response: NextResponse): void {
+export function setViewerAccessCookie(response: Response): void {
   if (!serverEnv.VIEWER_PASSWORD) {
     throw new Error("VIEWER_PASSWORD is not configured.");
   }
 
-  response.cookies.set({
-    expires: new Date(
-      Date.now() + VIEWER_ACCESS_DURATION_DAYS * 24 * 60 * 60 * 1000,
-    ),
-    httpOnly: true,
-    name: VIEWER_ACCESS_COOKIE,
-    path: "/",
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    value: buildViewerAccessToken(serverEnv.VIEWER_PASSWORD),
-  });
+  appendSetCookie(
+    response,
+    serializeCookie({
+      expires: new Date(
+        Date.now() + VIEWER_ACCESS_DURATION_DAYS * 24 * 60 * 60 * 1000,
+      ),
+      httpOnly: true,
+      name: VIEWER_ACCESS_COOKIE,
+      path: "/",
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      value: buildViewerAccessToken(serverEnv.VIEWER_PASSWORD),
+    }),
+  );
 }

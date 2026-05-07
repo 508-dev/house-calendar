@@ -10,7 +10,7 @@ import {
   getWholeHouseDetailLabel,
   isAnchorVisibleInHorizontalScroller,
   resolveDayEventText,
-} from "./calendar";
+} from "./calendar-utils";
 
 function buildDay(date: string): DailyAvailability {
   return {

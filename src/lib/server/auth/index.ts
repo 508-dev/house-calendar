@@ -1,11 +1,10 @@
 import { createHash, randomBytes } from "node:crypto";
 import { and, count, eq, gt, isNull, lte } from "drizzle-orm";
-import { cookies } from "next/headers";
-import type { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb, getSql } from "../db";
 import { adminBootstrapCodes, adminSessions, adminUsers } from "../db-schema";
 import { serverEnv } from "../env";
+import { appendSetCookie, readCookie, serializeCookie } from "../http-cookies";
 import {
   generateBootstrapCode,
   getBootstrapCodeExpiry,
@@ -264,30 +263,42 @@ async function createAdminSession(
 }
 
 export function setAdminSessionCookie(
-  response: NextResponse,
+  response: Response,
   session: AdminSession,
 ): void {
-  response.cookies.set({
-    expires: session.expiresAt,
-    httpOnly: true,
-    name: ADMIN_SESSION_COOKIE,
-    path: "/",
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    value: session.token,
-  });
+  appendSetCookie(
+    response,
+    serializeCookie({
+      expires: session.expiresAt,
+      httpOnly: true,
+      name: ADMIN_SESSION_COOKIE,
+      path: "/",
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      value: session.token,
+    }),
+  );
 }
 
-export function clearAdminSessionCookie(response: NextResponse): void {
-  response.cookies.set({
-    expires: new Date(0),
-    httpOnly: true,
-    name: ADMIN_SESSION_COOKIE,
-    path: "/",
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    value: "",
-  });
+export function clearAdminSessionCookie(response: Response): void {
+  appendSetCookie(
+    response,
+    serializeCookie({
+      expires: new Date(0),
+      httpOnly: true,
+      name: ADMIN_SESSION_COOKIE,
+      path: "/",
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      value: "",
+    }),
+  );
+}
+
+export function getAdminSessionToken(
+  cookieHeader: string | null | undefined,
+): string | undefined {
+  return readCookie(cookieHeader, ADMIN_SESSION_COOKIE);
 }
 
 export async function revokeAdminSession(
@@ -305,14 +316,15 @@ export async function revokeAdminSession(
     .where(eq(adminSessions.tokenHash, hashSessionToken(token)));
 }
 
-export async function getCurrentAdminSession(): Promise<CurrentAdminSession | null> {
+export async function getCurrentAdminSession(
+  cookieHeader: string | null | undefined,
+): Promise<CurrentAdminSession | null> {
   if (!serverEnv.DATABASE_URL) {
     return null;
   }
 
   await ensureAuthSchema();
-  const cookieStore = await cookies();
-  const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
+  const token = getAdminSessionToken(cookieHeader);
 
   if (!token) {
     return null;
@@ -357,6 +369,12 @@ export async function getCurrentAdminSession(): Promise<CurrentAdminSession | nu
 }
 
 export async function getAdminAuthState(): Promise<AdminAuthState> {
+  return getAdminAuthStateForCookieHeader(undefined);
+}
+
+export async function getAdminAuthStateForCookieHeader(
+  cookieHeader: string | null | undefined,
+): Promise<AdminAuthState> {
   const databaseConfigured = Boolean(serverEnv.DATABASE_URL);
 
   if (!databaseConfigured) {
@@ -370,7 +388,9 @@ export async function getAdminAuthState(): Promise<AdminAuthState> {
   }
 
   const initialized = (await getAdminCount()) > 0;
-  const session = initialized ? await getCurrentAdminSession() : null;
+  const session = initialized
+    ? await getCurrentAdminSession(cookieHeader)
+    : null;
 
   return {
     adminEmail: initialized ? await getAdminEmail() : null,

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 
 type SiteTabsProps = {
@@ -24,7 +24,7 @@ export function SiteTabs({ currentSiteId, sites }: SiteTabsProps) {
           return (
             <Link
               key={site.id}
-              href={site.href}
+              to={site.href}
               aria-current={isCurrent ? "page" : undefined}
               style={{
                 color: isCurrent ? "white" : "var(--app-muted)",

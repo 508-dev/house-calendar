@@ -50,7 +50,7 @@ The docs are intentionally split by audience:
 
 The repo currently contains a working prototype shell with:
 
-- Next.js App Router frontend
+- TanStack Start frontend with TanStack Router file-based routes
 - Bun-based local workflow
 - Postgres Docker Compose setup for local persistence plumbing
 - Tailwind CSS v4 plus shadcn/ui primitives
@@ -185,7 +185,8 @@ Do not collapse those into one mechanism.
 
 Location:
 
-- `src/app/*`
+- `src/routes/*`
+- `src/app/globals.css`
 - `src/components/ui/*`
 
 Responsibilities:
@@ -198,12 +199,12 @@ Responsibilities:
 
 Current files:
 
-- `src/app/layout.tsx`
-- `src/app/page.tsx`
-- `src/app/[siteId]/page.tsx`
-- `src/app/admin/[siteId]/page.tsx`
-- `src/app/api/health/route.ts`
-- `src/app/api/demo/route.ts`
+- `src/routes/__root.tsx`
+- `src/routes/index.tsx`
+- `src/routes/$siteId.tsx`
+- `src/routes/admin/$siteId.tsx`
+- `src/routes/api/health.ts`
+- `src/routes/api/demo.ts`
 - `src/components/ui/*`
 
 Expected future routes:
@@ -430,14 +431,14 @@ Current files:
 
 - `scripts/worktree-ports.ts`
 - `scripts/dev.ts`
-- `scripts/typecheck.ts`
+- `src/routeTree.gen.ts`
 
 Responsibilities:
 
 - derive stable per-worktree ports
 - generate `.env`
-- start Next.js on the correct port
-- work around Next route type generation quirks during standalone typecheck
+- start Vite on the correct port
+- keep TanStack Router route types generated for typechecking
 
 These scripts are part of the architecture. They are not incidental glue.
 

@@ -42,7 +42,7 @@ Use the repo scripts instead of improvising:
 - `bun run format`
 - `bun run check`
 
-Do not replace the wrapped typecheck flow with raw `tsc --noEmit`. This repo uses `scripts/typecheck.ts` because of Next route type generation behavior.
+`bun run typecheck` runs `tsc --noEmit`. If routes change, make sure the TanStack-generated `src/routeTree.gen.ts` stays current by running the Vite dev server or build.
 
 Full setup and operator commands are in [DEVELOPMENT.md](./DEVELOPMENT.md).
 
@@ -64,7 +64,8 @@ Current boundaries:
 - `src/lib/config/*` for config schema and mapping
 - `src/lib/server/*` for server-only helpers
 - `src/lib/server/db-schema.ts` for Drizzle table definitions
-- `src/app/*` for UI and route handlers
+- `src/routes/*` for TanStack Start routes and server route handlers
+- `src/app/globals.css` for app-wide CSS consumed by TanStack Start
 - `scripts/*` for workflow and tooling glue
 
 UI should consume derived state rather than reimplement domain logic.

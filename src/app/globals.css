@@ -5,6 +5,9 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  --font-sans: "Geist", sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
   --app-background: #f5efe4;
   --app-background-strong: #efe4d2;
   --app-foreground: #1f1c16;
