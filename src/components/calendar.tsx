@@ -576,6 +576,7 @@ export function Calendar({
   const [calendarScrollRevision, setCalendarScrollRevision] = useState(0);
   const [calendarViewportClipRect, setCalendarViewportClipRect] =
     useState<VerticalClipRect | null>(null);
+  const calendarHorizontalScrollerRef = useRef<HTMLDivElement | null>(null);
   const calendarScrollerRef = useRef<HTMLDivElement | null>(null);
   const previewPanelRef = useRef<HTMLDivElement | null>(null);
   const calendarScrollFrameRef = useRef<number | null>(null);
@@ -758,8 +759,16 @@ export function Calendar({
         setCalendarScrollRevision((revision) => revision + 1);
       });
     };
+    const horizontalScrollElement = calendarHorizontalScrollerRef.current;
     const scrollElement = calendarScrollerRef.current;
 
+    horizontalScrollElement?.addEventListener(
+      "scroll",
+      scheduleCalendarScrollUpdate,
+      {
+        passive: true,
+      },
+    );
     scrollElement?.addEventListener("scroll", scheduleCalendarScrollUpdate, {
       passive: true,
     });
@@ -773,6 +782,10 @@ export function Calendar({
         calendarScrollFrameRef.current = null;
       }
 
+      horizontalScrollElement?.removeEventListener(
+        "scroll",
+        scheduleCalendarScrollUpdate,
+      );
       scrollElement?.removeEventListener(
         "scroll",
         scheduleCalendarScrollUpdate,
@@ -961,7 +974,10 @@ export function Calendar({
 
         <div className="p-3 sm:p-6">
           <div className="min-w-0 pb-2">
-            <div className="min-w-0 overflow-x-auto pb-2">
+            <div
+              ref={calendarHorizontalScrollerRef}
+              className="min-w-0 overflow-x-auto pb-2"
+            >
               <div className="min-w-[30rem] space-y-3 sm:space-y-4">
                 <div className="grid grid-cols-7 gap-1 px-1 font-[family-name:var(--font-mono)] text-[10px] uppercase tracking-[0.2em] text-[var(--app-muted)] sm:gap-2 sm:text-[11px] sm:tracking-[0.24em]">
                   {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
