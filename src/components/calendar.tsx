@@ -596,6 +596,12 @@ export function Calendar({
   const calendarScrollFrameRef = useRef<number | null>(null);
   const activePreviewRequestRef = useRef<PreviewRequest | null>(null);
   const activePreviewRequest = hoverPreviewRequest ?? selectedPreviewRequest;
+  const calendarViewportClipMeasurementKey = activePreviewRequest
+    ? `${calendarScrollRevision}:${viewportSize.height}:${viewportSize.width}`
+    : null;
+  const previewLayoutMeasurementKey = activePreviewRequest
+    ? `${activePreviewRequest.type}:${activePreviewRequest.date}:${calendarScrollRevision}:${viewportSize.height}:${viewportSize.width}`
+    : null;
 
   const clearHoverPreview = () => {
     if (canHoverPreview) {
@@ -809,10 +815,7 @@ export function Calendar({
   }, []);
 
   useLayoutEffect(() => {
-    void calendarScrollRevision;
-    void viewportSize;
-
-    if (!activePreviewRequest) {
+    if (!calendarViewportClipMeasurementKey) {
       return;
     }
 
@@ -833,12 +836,10 @@ export function Calendar({
         ? currentClipRect
         : nextClipRect,
     );
-  }, [activePreviewRequest, calendarScrollRevision, viewportSize]);
+  }, [calendarViewportClipMeasurementKey]);
 
   useLayoutEffect(() => {
-    void calendarScrollRevision;
-
-    if (!activePreviewRequest) {
+    if (!previewLayoutMeasurementKey || !activePreviewRequest) {
       setPreviewSize(null);
       setPreviewPosition(null);
       return;
@@ -897,7 +898,12 @@ export function Calendar({
         ? currentPosition
         : nextPreviewPosition,
     );
-  }, [activePreviewRequest, calendarScrollRevision, previewSize, viewportSize]);
+  }, [
+    activePreviewRequest,
+    previewLayoutMeasurementKey,
+    previewSize,
+    viewportSize,
+  ]);
 
   useEffect(() => {
     setSelectedDate((currentSelectedDate) =>
