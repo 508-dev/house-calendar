@@ -41,6 +41,16 @@ export type ViewportSize = {
   width: number;
 };
 
+export type VerticalClipRect = {
+  bottom: number;
+  top: number;
+};
+
+export type HorizontalClipRect = {
+  left: number;
+  right: number;
+};
+
 export type AnchorRect = {
   bottom: number;
   height: number;
@@ -314,10 +324,6 @@ export function getPointerPreviewPosition(
   );
   const maxX =
     viewportSize.width - constrainedPreviewSize.width - previewViewportPadding;
-  const maxY =
-    viewportSize.height -
-    constrainedPreviewSize.height -
-    previewViewportPadding;
 
   return {
     x: clampToRange(
@@ -325,11 +331,7 @@ export function getPointerPreviewPosition(
       previewViewportPadding,
       maxX,
     ),
-    y: clampToRange(
-      pointer.y + previewPointerGap,
-      previewViewportPadding,
-      maxY,
-    ),
+    y: pointer.y + previewPointerGap,
   };
 }
 
@@ -344,31 +346,10 @@ export function getAnchorPreviewPosition(
   );
   const maxX =
     viewportSize.width - constrainedPreviewSize.width - previewViewportPadding;
-  const maxY =
-    viewportSize.height -
-    constrainedPreviewSize.height -
-    previewViewportPadding;
   const centeredX =
     anchorRect.left + anchorRect.width / 2 - constrainedPreviewSize.width / 2;
   const belowY = anchorRect.bottom + previewAnchorGap;
-  const aboveY =
-    anchorRect.top - constrainedPreviewSize.height - previewAnchorGap;
-  const fitsBelow = belowY <= maxY;
-  const fitsAbove = aboveY >= previewViewportPadding;
-  const spaceBelow =
-    viewportSize.height -
-    previewViewportPadding -
-    anchorRect.bottom -
-    previewAnchorGap;
-  const spaceAbove = anchorRect.top - previewViewportPadding - previewAnchorGap;
-  const shouldPlaceBelow =
-    fitsBelow || (!fitsAbove && spaceBelow >= spaceAbove);
   const nextX = clampToRange(centeredX, previewViewportPadding, maxX);
-  const nextY = clampToRange(
-    shouldPlaceBelow ? belowY : aboveY,
-    previewViewportPadding,
-    maxY,
-  );
 
   return {
     anchorOffsetX: clampToRange(
@@ -376,8 +357,40 @@ export function getAnchorPreviewPosition(
       24,
       constrainedPreviewSize.width - 24,
     ),
-    placement: shouldPlaceBelow ? "below" : "above",
+    placement: "below",
     x: nextX,
-    y: nextY,
+    y: belowY,
   };
+}
+
+export function getPreviewVerticalClipPath(
+  position: PreviewPosition,
+  previewSize: PreviewSize,
+  clipRect: VerticalClipRect,
+): string | undefined {
+  const topInset = clampToRange(
+    clipRect.top - position.y,
+    0,
+    previewSize.height,
+  );
+  const bottomInset = clampToRange(
+    position.y + previewSize.height - clipRect.bottom,
+    0,
+    previewSize.height,
+  );
+
+  if (topInset === 0 && bottomInset === 0) {
+    return undefined;
+  }
+
+  return `inset(${topInset}px 0px ${bottomInset}px 0px)`;
+}
+
+export function isAnchorVisibleInHorizontalScroller(
+  anchorRect: AnchorRect,
+  scrollerRect: HorizontalClipRect,
+): boolean {
+  return (
+    anchorRect.right > scrollerRect.left && anchorRect.left < scrollerRect.right
+  );
 }

@@ -6,7 +6,9 @@ import {
   buildWeeks,
   getAnchorPreviewPosition,
   getPointerPreviewPosition,
+  getPreviewVerticalClipPath,
   getWholeHouseDetailLabel,
+  isAnchorVisibleInHorizontalScroller,
   resolveDayEventText,
 } from "./calendar-utils";
 
@@ -255,7 +257,7 @@ describe("getAnchorPreviewPosition", () => {
     });
   });
 
-  test("uses the measured preview height when flipping above a low cell", () => {
+  test("keeps the preview below a low cell so scroller clipping can hide it", () => {
     const position = getAnchorPreviewPosition(
       {
         bottom: 1030,
@@ -277,9 +279,9 @@ describe("getAnchorPreviewPosition", () => {
 
     expect(position).toMatchObject({
       anchorOffsetX: 144,
-      placement: "above",
+      placement: "below",
       x: 346,
-      y: 620,
+      y: 1040,
     });
   });
 });
@@ -307,7 +309,7 @@ describe("getPointerPreviewPosition", () => {
     });
   });
 
-  test("clamps the preview inside the viewport near the lower edge", () => {
+  test("does not clamp the preview vertically near the lower edge", () => {
     const position = getPointerPreviewPosition(
       {
         x: 300,
@@ -325,7 +327,63 @@ describe("getPointerPreviewPosition", () => {
 
     expect(position).toMatchObject({
       x: 204,
-      y: 144,
+      y: 238,
     });
+  });
+});
+
+describe("getPreviewVerticalClipPath", () => {
+  test("does not clip when the preview is inside the scroll viewport", () => {
+    expect(
+      getPreviewVerticalClipPath(
+        { x: 120, y: 100 },
+        { height: 160, width: 288 },
+        { bottom: 400, top: 80 },
+      ),
+    ).toBeUndefined();
+  });
+
+  test("clips only the vertical overflow outside the scroll viewport", () => {
+    expect(
+      getPreviewVerticalClipPath(
+        { x: 120, y: 60 },
+        { height: 180, width: 288 },
+        { bottom: 200, top: 100 },
+      ),
+    ).toBe("inset(40px 0px 40px 0px)");
+  });
+});
+
+describe("isAnchorVisibleInHorizontalScroller", () => {
+  test("allows previews while the anchor is partially inside the horizontal scroller", () => {
+    expect(
+      isAnchorVisibleInHorizontalScroller(
+        {
+          bottom: 160,
+          height: 80,
+          left: 80,
+          right: 140,
+          top: 80,
+          width: 60,
+        },
+        { left: 100, right: 320 },
+      ),
+    ).toBe(true);
+  });
+
+  test("hides previews when the anchor is fully outside the horizontal scroller", () => {
+    expect(
+      isAnchorVisibleInHorizontalScroller(
+        {
+          bottom: 160,
+          height: 80,
+          left: 20,
+          right: 80,
+          top: 80,
+          width: 60,
+        },
+        { left: 100, right: 320 },
+      ),
+    ).toBe(false);
   });
 });
