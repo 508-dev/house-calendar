@@ -8,6 +8,7 @@ import {
   getPointerPreviewPosition,
   getPreviewVerticalClipPath,
   getWholeHouseDetailLabel,
+  isAnchorVisibleInHorizontalScroller,
   resolveDayEventText,
 } from "./calendar";
 
@@ -350,5 +351,39 @@ describe("getPreviewVerticalClipPath", () => {
         { bottom: 200, top: 100 },
       ),
     ).toBe("inset(40px 0px 40px 0px)");
+  });
+});
+
+describe("isAnchorVisibleInHorizontalScroller", () => {
+  test("allows previews while the anchor is partially inside the horizontal scroller", () => {
+    expect(
+      isAnchorVisibleInHorizontalScroller(
+        {
+          bottom: 160,
+          height: 80,
+          left: 80,
+          right: 140,
+          top: 80,
+          width: 60,
+        },
+        { left: 100, right: 320 },
+      ),
+    ).toBe(true);
+  });
+
+  test("hides previews when the anchor is fully outside the horizontal scroller", () => {
+    expect(
+      isAnchorVisibleInHorizontalScroller(
+        {
+          bottom: 160,
+          height: 80,
+          left: 20,
+          right: 80,
+          top: 80,
+          width: 60,
+        },
+        { left: 100, right: 320 },
+      ),
+    ).toBe(false);
   });
 });

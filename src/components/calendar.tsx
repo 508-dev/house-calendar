@@ -82,6 +82,11 @@ type VerticalClipRect = {
   top: number;
 };
 
+type HorizontalClipRect = {
+  left: number;
+  right: number;
+};
+
 type AnchorRect = {
   bottom: number;
   height: number;
@@ -490,6 +495,15 @@ export function getPreviewVerticalClipPath(
   return `inset(${topInset}px 0px ${bottomInset}px 0px)`;
 }
 
+export function isAnchorVisibleInHorizontalScroller(
+  anchorRect: AnchorRect,
+  scrollerRect: HorizontalClipRect,
+): boolean {
+  return (
+    anchorRect.right > scrollerRect.left && anchorRect.left < scrollerRect.right
+  );
+}
+
 export function getPointerPreviewPosition(
   pointer: { x: number; y: number },
   previewSize: PreviewSize,
@@ -851,13 +865,24 @@ export function Calendar({
       setPreviewSize(measuredPreviewSize);
     }
 
+    const anchorRect = getAnchorRect(activePreviewRequest.element);
+    const horizontalScrollerRect =
+      calendarHorizontalScrollerRef.current?.getBoundingClientRect();
+
+    if (
+      horizontalScrollerRect &&
+      !isAnchorVisibleInHorizontalScroller(anchorRect, {
+        left: horizontalScrollerRect.left,
+        right: horizontalScrollerRect.right,
+      })
+    ) {
+      setPreviewPosition(null);
+      return;
+    }
+
     const nextPreviewPosition =
       activePreviewRequest.type === "anchor"
-        ? getAnchorPreviewPosition(
-            getAnchorRect(activePreviewRequest.element),
-            nextPreviewSize,
-            viewportSize,
-          )
+        ? getAnchorPreviewPosition(anchorRect, nextPreviewSize, viewportSize)
         : getPointerPreviewPosition(
             getPreviewRequestPointer(activePreviewRequest),
             nextPreviewSize,
