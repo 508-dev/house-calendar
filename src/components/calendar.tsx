@@ -77,6 +77,16 @@ type ViewportSize = {
   width: number;
 };
 
+type VerticalClipRect = {
+  bottom: number;
+  top: number;
+};
+
+type HorizontalClipRect = {
+  left: number;
+  right: number;
+};
+
 type AnchorRect = {
   bottom: number;
   height: number;
@@ -88,12 +98,13 @@ type AnchorRect = {
 
 type PreviewRequest =
   | {
-      anchorRect: AnchorRect;
       date: string;
+      element: HTMLButtonElement;
       type: "anchor";
     }
   | {
       date: string;
+      element: HTMLButtonElement;
       pointer: { x: number; y: number };
       type: "pointer";
     };
@@ -437,29 +448,6 @@ function getFallbackPreviewSize(viewportSize: ViewportSize): PreviewSize {
   );
 }
 
-function clampPreviewPosition(
-  position: PreviewPosition,
-  previewSize: PreviewSize,
-  viewportSize: ViewportSize,
-): PreviewPosition {
-  const constrainedPreviewSize = constrainPreviewSize(
-    previewSize,
-    viewportSize,
-  );
-  const maxX =
-    viewportSize.width - constrainedPreviewSize.width - previewViewportPadding;
-  const maxY =
-    viewportSize.height -
-    constrainedPreviewSize.height -
-    previewViewportPadding;
-
-  return {
-    ...position,
-    x: clampToRange(position.x, previewViewportPadding, maxX),
-    y: clampToRange(position.y, previewViewportPadding, maxY),
-  };
-}
-
 function getAnchorRect(element: HTMLElement): AnchorRect {
   const rect = element.getBoundingClientRect();
 
@@ -473,6 +461,49 @@ function getAnchorRect(element: HTMLElement): AnchorRect {
   };
 }
 
+function getPreviewRequestPointer(
+  previewRequest: Extract<PreviewRequest, { type: "pointer" }>,
+): { x: number; y: number } {
+  const anchorRect = getAnchorRect(previewRequest.element);
+
+  return {
+    x: anchorRect.left + previewRequest.pointer.x,
+    y: anchorRect.top + previewRequest.pointer.y,
+  };
+}
+
+export function getPreviewVerticalClipPath(
+  position: PreviewPosition,
+  previewSize: PreviewSize,
+  clipRect: VerticalClipRect,
+): string | undefined {
+  const topInset = clampToRange(
+    clipRect.top - position.y,
+    0,
+    previewSize.height,
+  );
+  const bottomInset = clampToRange(
+    position.y + previewSize.height - clipRect.bottom,
+    0,
+    previewSize.height,
+  );
+
+  if (topInset === 0 && bottomInset === 0) {
+    return undefined;
+  }
+
+  return `inset(${topInset}px 0px ${bottomInset}px 0px)`;
+}
+
+export function isAnchorVisibleInHorizontalScroller(
+  anchorRect: AnchorRect,
+  scrollerRect: HorizontalClipRect,
+): boolean {
+  return (
+    anchorRect.right > scrollerRect.left && anchorRect.left < scrollerRect.right
+  );
+}
+
 export function getPointerPreviewPosition(
   pointer: { x: number; y: number },
   previewSize: PreviewSize,
@@ -484,10 +515,6 @@ export function getPointerPreviewPosition(
   );
   const maxX =
     viewportSize.width - constrainedPreviewSize.width - previewViewportPadding;
-  const maxY =
-    viewportSize.height -
-    constrainedPreviewSize.height -
-    previewViewportPadding;
 
   return {
     x: clampToRange(
@@ -495,11 +522,7 @@ export function getPointerPreviewPosition(
       previewViewportPadding,
       maxX,
     ),
-    y: clampToRange(
-      pointer.y + previewPointerGap,
-      previewViewportPadding,
-      maxY,
-    ),
+    y: pointer.y + previewPointerGap,
   };
 }
 
@@ -514,31 +537,10 @@ export function getAnchorPreviewPosition(
   );
   const maxX =
     viewportSize.width - constrainedPreviewSize.width - previewViewportPadding;
-  const maxY =
-    viewportSize.height -
-    constrainedPreviewSize.height -
-    previewViewportPadding;
   const centeredX =
     anchorRect.left + anchorRect.width / 2 - constrainedPreviewSize.width / 2;
   const belowY = anchorRect.bottom + previewAnchorGap;
-  const aboveY =
-    anchorRect.top - constrainedPreviewSize.height - previewAnchorGap;
-  const fitsBelow = belowY <= maxY;
-  const fitsAbove = aboveY >= previewViewportPadding;
-  const spaceBelow =
-    viewportSize.height -
-    previewViewportPadding -
-    anchorRect.bottom -
-    previewAnchorGap;
-  const spaceAbove = anchorRect.top - previewViewportPadding - previewAnchorGap;
-  const shouldPlaceBelow =
-    fitsBelow || (!fitsAbove && spaceBelow >= spaceAbove);
   const nextX = clampToRange(centeredX, previewViewportPadding, maxX);
-  const nextY = clampToRange(
-    shouldPlaceBelow ? belowY : aboveY,
-    previewViewportPadding,
-    maxY,
-  );
 
   return {
     anchorOffsetX: clampToRange(
@@ -546,9 +548,9 @@ export function getAnchorPreviewPosition(
       24,
       constrainedPreviewSize.width - 24,
     ),
-    placement: shouldPlaceBelow ? "below" : "above",
+    placement: "below",
     x: nextX,
-    y: nextY,
+    y: belowY,
   };
 }
 
@@ -576,8 +578,6 @@ export function Calendar({
   const [selectedDate, setSelectedDate] = useState(defaultSelectedDate);
   const [selectedPreviewRequest, setSelectedPreviewRequest] =
     useState<PreviewRequest | null>(null);
-  const [selectedPreviewPosition, setSelectedPreviewPosition] =
-    useState<PreviewPosition | null>(null);
   const [hoverPreviewRequest, setHoverPreviewRequest] =
     useState<PreviewRequest | null>(null);
   const [previewPosition, setPreviewPosition] =
@@ -587,8 +587,21 @@ export function Calendar({
   const [viewportSize, setViewportSize] = useState<ViewportSize>(() =>
     getViewportSize(),
   );
+  const [calendarScrollRevision, setCalendarScrollRevision] = useState(0);
+  const [calendarViewportClipRect, setCalendarViewportClipRect] =
+    useState<VerticalClipRect | null>(null);
+  const calendarHorizontalScrollerRef = useRef<HTMLDivElement | null>(null);
+  const calendarScrollerRef = useRef<HTMLDivElement | null>(null);
   const previewPanelRef = useRef<HTMLDivElement | null>(null);
+  const calendarScrollFrameRef = useRef<number | null>(null);
+  const activePreviewRequestRef = useRef<PreviewRequest | null>(null);
   const activePreviewRequest = hoverPreviewRequest ?? selectedPreviewRequest;
+  const calendarViewportClipMeasurementKey = activePreviewRequest
+    ? `${calendarScrollRevision}:${viewportSize.height}:${viewportSize.width}`
+    : null;
+  const previewLayoutMeasurementKey = activePreviewRequest
+    ? `${activePreviewRequest.type}:${activePreviewRequest.date}:${calendarScrollRevision}:${viewportSize.height}:${viewportSize.width}`
+    : null;
 
   const clearHoverPreview = () => {
     if (canHoverPreview) {
@@ -604,11 +617,12 @@ export function Calendar({
     }
 
     const viewportSize = getViewportSize();
-    const anchorRect = getAnchorRect(event.currentTarget);
+    const anchorElement = event.currentTarget;
+    const anchorRect = getAnchorRect(anchorElement);
 
     setHoverPreviewRequest({
-      anchorRect,
       date: dayDate,
+      element: anchorElement,
       type: "anchor",
     });
     setPreviewPosition(
@@ -626,28 +640,32 @@ export function Calendar({
     if (canHoverPreview) {
       if (hoverPreviewRequest?.date === dayDate && previewPosition) {
         setSelectedPreviewRequest(hoverPreviewRequest);
-        setSelectedPreviewPosition(previewPosition);
         setHoverPreviewRequest(null);
         return;
       }
 
       const viewportSize = getViewportSize();
+      const anchorElement = event.currentTarget;
+      const anchorRect = getAnchorRect(anchorElement);
       const pointerPreviewRequest: PreviewRequest = {
         date: dayDate,
+        element: anchorElement,
         pointer: {
-          x: event.clientX,
-          y: event.clientY,
+          x: event.clientX - anchorRect.left,
+          y: event.clientY - anchorRect.top,
         },
         type: "pointer",
       };
 
       setSelectedPreviewRequest(pointerPreviewRequest);
-      setSelectedPreviewPosition(null);
       setHoverPreviewRequest(null);
 
       setPreviewPosition(
         getPointerPreviewPosition(
-          pointerPreviewRequest.pointer,
+          {
+            x: event.clientX,
+            y: event.clientY,
+          },
           previewSize ?? getFallbackPreviewSize(viewportSize),
           viewportSize,
         ),
@@ -656,13 +674,13 @@ export function Calendar({
     }
 
     const viewportSize = getViewportSize();
-    const anchorRect = getAnchorRect(event.currentTarget);
+    const anchorElement = event.currentTarget;
+    const anchorRect = getAnchorRect(anchorElement);
 
     setHoverPreviewRequest(null);
-    setSelectedPreviewPosition(null);
     setSelectedPreviewRequest({
-      anchorRect,
       date: dayDate,
+      element: anchorElement,
       type: "anchor",
     });
     setPreviewPosition(
@@ -682,15 +700,28 @@ export function Calendar({
     }
 
     const viewportSize = getViewportSize();
+    const anchorElement = event.currentTarget;
+    const anchorRect = getAnchorRect(anchorElement);
+    const pointer = {
+      x: event.clientX - anchorRect.left,
+      y: event.clientY - anchorRect.top,
+    };
 
-    setHoverPreviewRequest({
-      date: dayDate,
-      pointer: {
-        x: event.clientX,
-        y: event.clientY,
-      },
-      type: "pointer",
-    });
+    setHoverPreviewRequest((currentRequest) =>
+      currentRequest?.type === "pointer" &&
+      currentRequest.date === dayDate &&
+      currentRequest.element === anchorElement
+        ? {
+            ...currentRequest,
+            pointer,
+          }
+        : {
+            date: dayDate,
+            element: anchorElement,
+            pointer,
+            type: "pointer",
+          },
+    );
     setPreviewPosition(
       getPointerPreviewPosition(
         {
@@ -720,6 +751,10 @@ export function Calendar({
   }, []);
 
   useEffect(() => {
+    activePreviewRequestRef.current = activePreviewRequest;
+  }, [activePreviewRequest]);
+
+  useEffect(() => {
     const handleViewportResize = () => {
       setViewportSize(getViewportSize());
     };
@@ -729,8 +764,82 @@ export function Calendar({
     return () => window.removeEventListener("resize", handleViewportResize);
   }, []);
 
+  useEffect(() => {
+    const scheduleCalendarScrollUpdate = () => {
+      if (!activePreviewRequestRef.current) {
+        return;
+      }
+
+      if (calendarScrollFrameRef.current !== null) {
+        return;
+      }
+
+      calendarScrollFrameRef.current = window.requestAnimationFrame(() => {
+        calendarScrollFrameRef.current = null;
+        setCalendarScrollRevision((revision) => revision + 1);
+      });
+    };
+    const horizontalScrollElement = calendarHorizontalScrollerRef.current;
+    const scrollElement = calendarScrollerRef.current;
+
+    horizontalScrollElement?.addEventListener(
+      "scroll",
+      scheduleCalendarScrollUpdate,
+      {
+        passive: true,
+      },
+    );
+    scrollElement?.addEventListener("scroll", scheduleCalendarScrollUpdate, {
+      passive: true,
+    });
+    window.addEventListener("scroll", scheduleCalendarScrollUpdate, {
+      passive: true,
+    });
+
+    return () => {
+      if (calendarScrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(calendarScrollFrameRef.current);
+        calendarScrollFrameRef.current = null;
+      }
+
+      horizontalScrollElement?.removeEventListener(
+        "scroll",
+        scheduleCalendarScrollUpdate,
+      );
+      scrollElement?.removeEventListener(
+        "scroll",
+        scheduleCalendarScrollUpdate,
+      );
+      window.removeEventListener("scroll", scheduleCalendarScrollUpdate);
+    };
+  }, []);
+
   useLayoutEffect(() => {
-    if (!activePreviewRequest) {
+    if (!calendarViewportClipMeasurementKey) {
+      return;
+    }
+
+    const rect = calendarScrollerRef.current?.getBoundingClientRect();
+
+    if (!rect) {
+      return;
+    }
+
+    const nextClipRect = {
+      bottom: rect.bottom,
+      top: rect.top,
+    };
+
+    setCalendarViewportClipRect((currentClipRect) =>
+      currentClipRect?.bottom === nextClipRect.bottom &&
+      currentClipRect.top === nextClipRect.top
+        ? currentClipRect
+        : nextClipRect,
+    );
+  }, [calendarViewportClipMeasurementKey]);
+
+  useLayoutEffect(() => {
+    if (!previewLayoutMeasurementKey || !activePreviewRequest) {
       setPreviewSize(null);
       setPreviewPosition(null);
       return;
@@ -757,40 +866,26 @@ export function Calendar({
       setPreviewSize(measuredPreviewSize);
     }
 
-    if (!hoverPreviewRequest && selectedPreviewPosition) {
-      const nextPreviewPosition = clampPreviewPosition(
-        selectedPreviewPosition,
-        nextPreviewSize,
-        viewportSize,
-      );
+    const anchorRect = getAnchorRect(activePreviewRequest.element);
+    const horizontalScrollerRect =
+      calendarHorizontalScrollerRef.current?.getBoundingClientRect();
 
-      if (
-        nextPreviewPosition.x !== selectedPreviewPosition.x ||
-        nextPreviewPosition.y !== selectedPreviewPosition.y
-      ) {
-        setSelectedPreviewPosition(nextPreviewPosition);
-      }
-
-      setPreviewPosition((currentPosition) =>
-        currentPosition?.x === nextPreviewPosition.x &&
-        currentPosition?.y === nextPreviewPosition.y &&
-        currentPosition?.placement === nextPreviewPosition.placement &&
-        currentPosition?.anchorOffsetX === nextPreviewPosition.anchorOffsetX
-          ? currentPosition
-          : nextPreviewPosition,
-      );
+    if (
+      horizontalScrollerRect &&
+      !isAnchorVisibleInHorizontalScroller(anchorRect, {
+        left: horizontalScrollerRect.left,
+        right: horizontalScrollerRect.right,
+      })
+    ) {
+      setPreviewPosition(null);
       return;
     }
 
     const nextPreviewPosition =
       activePreviewRequest.type === "anchor"
-        ? getAnchorPreviewPosition(
-            activePreviewRequest.anchorRect,
-            nextPreviewSize,
-            viewportSize,
-          )
+        ? getAnchorPreviewPosition(anchorRect, nextPreviewSize, viewportSize)
         : getPointerPreviewPosition(
-            activePreviewRequest.pointer,
+            getPreviewRequestPointer(activePreviewRequest),
             nextPreviewSize,
             viewportSize,
           );
@@ -805,9 +900,8 @@ export function Calendar({
     );
   }, [
     activePreviewRequest,
-    hoverPreviewRequest,
+    previewLayoutMeasurementKey,
     previewSize,
-    selectedPreviewPosition,
     viewportSize,
   ]);
 
@@ -859,6 +953,14 @@ export function Calendar({
   const previewDay = activePreviewRequest
     ? (days.find((day) => day.date === activePreviewRequest.date) ?? null)
     : null;
+  const previewClipPath =
+    previewPosition && previewSize && calendarViewportClipRect
+      ? getPreviewVerticalClipPath(
+          previewPosition,
+          previewSize,
+          calendarViewportClipRect,
+        )
+      : undefined;
   const hasSingleRoom = days[0]?.rooms.length === 1;
   const legendItems: ReadonlyArray<readonly [StatusKey, string]> = hasSingleRoom
     ? [
@@ -903,145 +1005,169 @@ export function Calendar({
 
         <div className="p-3 sm:p-6">
           <div className="min-w-0 pb-2">
-            <div className="min-w-0 space-y-3 sm:space-y-4">
-              <div className="grid grid-cols-7 gap-1 px-1 font-[family-name:var(--font-mono)] text-[10px] uppercase tracking-[0.2em] text-[var(--app-muted)] sm:gap-2 sm:text-[11px] sm:tracking-[0.24em]">
-                {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
-                  (label) => (
-                    <div key={label} className="pb-1 text-center">
-                      {label}
-                    </div>
-                  ),
-                )}
-              </div>
+            <div
+              ref={calendarHorizontalScrollerRef}
+              className="min-w-0 overflow-x-auto pb-2"
+            >
+              <div className="min-w-[30rem] space-y-3 sm:space-y-4">
+                <div className="grid grid-cols-7 gap-1 px-1 font-[family-name:var(--font-mono)] text-[10px] uppercase tracking-[0.2em] text-[var(--app-muted)] sm:gap-2 sm:text-[11px] sm:tracking-[0.24em]">
+                  {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
+                    (label) => (
+                      <div key={label} className="pb-1 text-center">
+                        {label}
+                      </div>
+                    ),
+                  )}
+                </div>
 
-              <div className="h-[70vh] overflow-y-auto pr-1 sm:h-[78vh]">
-                <div className="space-y-2 px-1 pb-1">
-                  {weeks.map((week) => (
-                    <div key={week.id} className="space-y-2">
-                      {week.monthMarker ? (
-                        <div className="grid grid-cols-7 gap-1 px-1 sm:gap-2">
-                          <div className="col-span-full flex justify-center">
-                            <div className="flex w-full items-center rounded-full border border-[color:var(--app-card-border)] bg-white/88 px-2.5 py-1 shadow-[0_1px_0_rgba(31,28,22,0.04)]">
-                              <p className="shrink-0 font-[family-name:var(--font-mono)] text-[10px] uppercase tracking-[0.2em] text-[var(--app-muted)]">
-                                {week.monthMarker.label}
-                              </p>
+                <div
+                  ref={calendarScrollerRef}
+                  className="h-[70vh] overflow-y-auto pr-1 [mask-image:linear-gradient(to_bottom,transparent_0,black_1.25rem,black_calc(100%_-_1.25rem),transparent_100%)] sm:h-[78vh]"
+                >
+                  <div className="space-y-2 px-1 pb-1">
+                    {weeks.map((week) => (
+                      <div key={week.id} className="space-y-2">
+                        {week.monthMarker ? (
+                          <div className="grid grid-cols-7 gap-1 px-1 sm:gap-2">
+                            <div className="col-span-full flex justify-center">
+                              <div className="flex w-full items-center rounded-full border border-[color:var(--app-card-border)] bg-white/88 px-2.5 py-1 shadow-[0_1px_0_rgba(31,28,22,0.04)]">
+                                <p className="shrink-0 font-[family-name:var(--font-mono)] text-[10px] uppercase tracking-[0.2em] text-[var(--app-muted)]">
+                                  {week.monthMarker.label}
+                                </p>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ) : null}
+                        ) : null}
 
-                      <div className="grid grid-cols-7 gap-1 sm:gap-2">
-                        {week.cells.map((cell) => {
-                          if (!cell.day) {
+                        <div className="grid min-w-0 grid-cols-7 gap-1 sm:gap-2">
+                          {week.cells.map((cell) => {
+                            if (!cell.day) {
+                              return (
+                                <div
+                                  key={cell.id}
+                                  className="min-w-0 w-full max-w-full rounded-2xl bg-transparent"
+                                >
+                                  <div
+                                    aria-hidden="true"
+                                    className="aspect-[0.78] w-full sm:aspect-[0.95]"
+                                  />
+                                </div>
+                              );
+                            }
+
+                            const day = cell.day;
+                            const isSelected = selectedDay.date === day.date;
+                            const isToday = day.date === today;
+                            const isPastDay = isPastDate(day.date, today);
+                            const isCarryoverMonthDay = week.monthMarker
+                              ? day.date.slice(0, 7) !==
+                                week.monthMarker.monthKey
+                              : false;
+                            const cellClasses = isPastDay
+                              ? "cursor-pointer bg-stone-100 text-stone-500 ring-1 ring-stone-200 hover:bg-stone-200"
+                              : statusClasses[day.status];
+                            const stateClasses = isSelected
+                              ? "ring-2 ring-[color:var(--app-foreground)] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.65)]"
+                              : isToday
+                                ? "ring-2 ring-[color:var(--app-accent)]"
+                                : "";
+                            const roomBarClass = isPastDay
+                              ? "bg-stone-300/80"
+                              : "bg-white/75";
+                            const dotClass = isPastDay
+                              ? "bg-stone-300"
+                              : statusDotClasses[day.status];
+
                             return (
                               <div
                                 key={cell.id}
-                                className="aspect-[0.95] rounded-2xl bg-transparent"
-                              />
-                            );
-                          }
-
-                          const day = cell.day;
-                          const isSelected = selectedDay.date === day.date;
-                          const isToday = day.date === today;
-                          const isPastDay = isPastDate(day.date, today);
-                          const isCarryoverMonthDay = week.monthMarker
-                            ? day.date.slice(0, 7) !== week.monthMarker.monthKey
-                            : false;
-                          const cellClasses = isPastDay
-                            ? "cursor-pointer bg-stone-100 text-stone-500 ring-1 ring-stone-200 hover:bg-stone-200"
-                            : statusClasses[day.status];
-                          const stateClasses = isSelected
-                            ? "ring-2 ring-[color:var(--app-foreground)] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.65)]"
-                            : isToday
-                              ? "ring-2 ring-[color:var(--app-accent)]"
-                              : "";
-                          const roomBarClass = isPastDay
-                            ? "bg-stone-300/80"
-                            : "bg-white/75";
-                          const dotClass = isPastDay
-                            ? "bg-stone-300"
-                            : statusDotClasses[day.status];
-
-                          return (
-                            <button
-                              key={cell.id}
-                              aria-current={isToday ? "date" : undefined}
-                              aria-label={buildDayAriaLabel(day)}
-                              aria-pressed={isSelected}
-                              type="button"
-                              onClick={(event) => selectDay(day.date, event)}
-                              onFocus={(event) =>
-                                updatePreviewFromFocus(day.date, event)
-                              }
-                              onMouseEnter={(event) =>
-                                updatePreviewFromMouse(day.date, event)
-                              }
-                              onMouseMove={(event) =>
-                                updatePreviewFromMouse(day.date, event)
-                              }
-                              onMouseLeave={clearHoverPreview}
-                              onBlur={clearHoverPreview}
-                              className={`aspect-[0.78] rounded-xl p-1.5 text-left transition sm:aspect-[0.95] sm:min-h-[5.75rem] sm:rounded-2xl sm:p-2 ${
-                                cellClasses
-                              } ${stateClasses} ${
-                                isCarryoverMonthDay
-                                  ? "max-sm:bg-stone-50 max-sm:text-stone-700 max-sm:ring-stone-200 max-sm:hover:bg-stone-100"
-                                  : ""
-                              }`}
-                            >
-                              <div className="flex h-full flex-col justify-between">
-                                <div className="flex items-start justify-between gap-2">
-                                  <span className="block min-w-0 text-xs font-semibold sm:text-sm">
-                                    {cell.dateLabel}
-                                  </span>
-                                  <span
-                                    className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full sm:mt-1 sm:h-3 sm:w-3 ${dotClass}`}
-                                  />
-                                </div>
-
-                                <div className="space-y-0.5 sm:space-y-1">
-                                  {day.events.length > 0 ? (
-                                    <p className="truncate text-[10px] font-medium text-current/85">
-                                      {formatDayEventSummary(
-                                        day.events[0],
-                                        timedNotes,
-                                        timezone,
-                                      )}
-                                      {day.events.length > 1
-                                        ? ` +${day.events.length - 1}`
-                                        : ""}
-                                    </p>
-                                  ) : null}
-                                  <p className="truncate text-[9px] font-medium capitalize sm:text-[11px]">
-                                    {day.status}
-                                  </p>
-                                  <div className="flex gap-0.5 sm:gap-1">
-                                    {day.rooms.map((room) => (
+                                className="relative min-w-0 w-full max-w-full"
+                              >
+                                <div
+                                  aria-hidden="true"
+                                  className="aspect-[0.78] w-full sm:aspect-[0.95]"
+                                />
+                                <button
+                                  aria-current={isToday ? "date" : undefined}
+                                  aria-label={buildDayAriaLabel(day)}
+                                  aria-pressed={isSelected}
+                                  type="button"
+                                  onClick={(event) =>
+                                    selectDay(day.date, event)
+                                  }
+                                  onFocus={(event) =>
+                                    updatePreviewFromFocus(day.date, event)
+                                  }
+                                  onMouseEnter={(event) =>
+                                    updatePreviewFromMouse(day.date, event)
+                                  }
+                                  onMouseMove={(event) =>
+                                    updatePreviewFromMouse(day.date, event)
+                                  }
+                                  onMouseLeave={clearHoverPreview}
+                                  onBlur={clearHoverPreview}
+                                  className={`absolute inset-0 h-full w-full max-w-full overflow-hidden rounded-xl p-1.5 text-left transition sm:rounded-2xl sm:p-2 ${
+                                    cellClasses
+                                  } ${stateClasses} ${
+                                    isCarryoverMonthDay
+                                      ? "max-sm:bg-stone-50 max-sm:text-stone-700 max-sm:ring-stone-200 max-sm:hover:bg-stone-100"
+                                      : ""
+                                  }`}
+                                >
+                                  <div className="flex h-full min-w-0 flex-col justify-between">
+                                    <div className="flex min-w-0 items-start justify-between gap-2">
+                                      <span className="block min-w-0 text-xs font-semibold sm:text-sm">
+                                        {cell.dateLabel}
+                                      </span>
                                       <span
-                                        key={room.id}
-                                        className={`h-1 flex-1 rounded-full sm:h-1.5 ${
-                                          room.status === "occupied"
-                                            ? isPastDay
-                                              ? "bg-stone-400"
-                                              : "bg-[color:var(--app-foreground)]/70"
-                                            : room.status === "tentative"
-                                              ? isPastDay
-                                                ? "bg-stone-300"
-                                                : "bg-sky-400/80"
-                                              : roomBarClass
-                                        }`}
+                                        className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full sm:mt-1 sm:h-3 sm:w-3 ${dotClass}`}
                                       />
-                                    ))}
+                                    </div>
+
+                                    <div className="min-w-0 space-y-0.5 sm:space-y-1">
+                                      {day.events.length > 0 ? (
+                                        <p className="truncate text-[10px] font-medium text-current/85">
+                                          {formatDayEventSummary(
+                                            day.events[0],
+                                            timedNotes,
+                                            timezone,
+                                          )}
+                                          {day.events.length > 1
+                                            ? ` +${day.events.length - 1}`
+                                            : ""}
+                                        </p>
+                                      ) : null}
+                                      <p className="truncate text-[9px] font-medium capitalize sm:text-[11px]">
+                                        {day.status}
+                                      </p>
+                                      <div className="flex min-w-0 gap-0.5 sm:gap-1">
+                                        {day.rooms.map((room) => (
+                                          <span
+                                            key={room.id}
+                                            className={`h-1 flex-1 rounded-full sm:h-1.5 ${
+                                              room.status === "occupied"
+                                                ? isPastDay
+                                                  ? "bg-stone-400"
+                                                  : "bg-[color:var(--app-foreground)]/70"
+                                                : room.status === "tentative"
+                                                  ? isPastDay
+                                                    ? "bg-stone-300"
+                                                    : "bg-sky-400/80"
+                                                  : roomBarClass
+                                            }`}
+                                          />
+                                        ))}
+                                      </div>
+                                    </div>
                                   </div>
-                                </div>
+                                </button>
                               </div>
-                            </button>
-                          );
-                        })}
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1054,6 +1180,7 @@ export function Calendar({
           ref={previewPanelRef}
           className="pointer-events-none fixed z-50 w-[min(18rem,calc(100vw-2rem))] max-h-64 overflow-y-auto rounded-[1.25rem] border border-[color:var(--app-card-border)] bg-[color:var(--app-card)] p-3 text-[var(--app-foreground)] shadow-[0_20px_60px_rgba(29,22,12,0.18)] backdrop-blur lg:max-h-[min(28rem,calc(100vh-2rem))] lg:p-4"
           style={{
+            clipPath: previewClipPath,
             left: previewPosition.x,
             top: previewPosition.y,
           }}
