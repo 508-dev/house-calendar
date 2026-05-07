@@ -21,7 +21,12 @@ const privateMarkerPatterns = [
   /calendar\.google/i,
   /basic\.ics/i,
   /ICS_URL/,
+  /"aliases"/,
   /"envVar"/,
+  /"people"/,
+  /"publicVisibility"/,
+  /"rules"/,
+  /"sharePolicies"/,
   /"calendars"/,
   /private-/i,
 ];

@@ -190,10 +190,10 @@ function SiteHomePage() {
 
         <Calendar
           days={data.availability}
-          houseName={data.houseConfig.name}
+          houseName={data.house.name}
           requestEnabled={stayRequestsEnabled}
           timedNotes={data.timedNotes}
-          timezone={data.houseConfig.timezone}
+          timezone={data.house.timezone}
         />
       </div>
     </main>

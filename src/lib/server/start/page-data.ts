@@ -98,7 +98,10 @@ export const getViewerPageData = createServerFn({ method: "GET" })
 
     return {
       availability: calendarDays,
-      houseConfig,
+      house: {
+        name: houseConfig.name,
+        timezone: houseConfig.timezone,
+      },
       kind: "ready" as const,
       metadata: buildSiteMetadata(siteConfig.site.branding),
       site: {
