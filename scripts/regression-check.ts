@@ -48,6 +48,20 @@ const textExtensions = new Set([
   ".txt",
 ]);
 
+function parseOptionalPort(value: string | undefined): number | undefined {
+  if (value === undefined || value.trim() === "") {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+
+  if (!Number.isFinite(parsed) || parsed < 1 || parsed > 65_535) {
+    return undefined;
+  }
+
+  return parsed;
+}
+
 function parseArgs(argv: string[]): RegressionArgs {
   const args: RegressionArgs = {};
 
@@ -224,8 +238,15 @@ async function startBuiltServer(): Promise<{
     throw new Error("No built server found. Run `bun run build` first.");
   }
 
-  const bundle = await resolveWorktreePorts({ worktreeRoot: process.cwd() });
-  const port = Number(process.env.PORT || bundle.app.port);
+  const explicitPort = parseOptionalPort(process.env.PORT);
+  const bundle = await resolveWorktreePorts({
+    env: {
+      ...process.env,
+      PORT: explicitPort === undefined ? undefined : String(explicitPort),
+    },
+    worktreeRoot: process.cwd(),
+  });
+  const port = explicitPort ?? bundle.app.port;
   const baseUrl = `http://127.0.0.1:${port}`;
   const child = spawn(["node", serverEntry], {
     env: {
@@ -386,8 +407,10 @@ async function main(): Promise<void> {
   const baseUrl = normalizeBaseUrl(args.url ?? startedServer?.baseUrl ?? "");
 
   try {
-    for (const result of scanBuildOutput()) {
-      printResult(result);
+    if (startedServer) {
+      for (const result of scanBuildOutput()) {
+        printResult(result);
+      }
     }
 
     for (const result of await checkRoutes(baseUrl, siteId, credentials)) {

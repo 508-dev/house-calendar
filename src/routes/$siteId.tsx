@@ -82,6 +82,10 @@ function getViewerAccessErrorMessage(
     return "Viewer password protection is enabled, but VIEWER_PASSWORD is not configured.";
   }
 
+  if (error === "misconfigured") {
+    return "Viewer password protection is enabled, but VIEWER_PASSWORD is not configured.";
+  }
+
   if (error === "invalid") {
     return "The password is incorrect.";
   }

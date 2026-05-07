@@ -28,6 +28,10 @@ export function isViewerAccessPasswordEnabled(config: AppConfig): boolean {
   return config.viewerAccess.mode === "password";
 }
 
+export function isViewerAccessPasswordConfigured(): boolean {
+  return Boolean(serverEnv.VIEWER_PASSWORD);
+}
+
 export function verifyViewerPassword(password: string): boolean {
   if (!serverEnv.VIEWER_PASSWORD) {
     return false;

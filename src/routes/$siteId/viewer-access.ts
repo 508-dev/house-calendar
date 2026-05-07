@@ -8,9 +8,12 @@ export const Route = createFileRoute("/$siteId/viewer-access")({
       POST: async ({ params, request }) => {
         const { getSiteConfig } = await import("@/lib/config/config");
         const { loadAppConfig } = await import("@/lib/server/app-config");
-        const { setViewerAccessCookie, verifyViewerPassword } = await import(
-          "@/lib/server/viewer-access"
-        );
+        const {
+          isViewerAccessPasswordConfigured,
+          isViewerAccessPasswordEnabled,
+          setViewerAccessCookie,
+          verifyViewerPassword,
+        } = await import("@/lib/server/viewer-access");
         const appConfig = await loadAppConfig();
         const siteConfig = getSiteConfig(appConfig, params.siteId);
 
@@ -19,6 +22,16 @@ export const Route = createFileRoute("/$siteId/viewer-access")({
         }
 
         const redirectUrl = buildRequestUrl(request, `/${siteConfig.site.id}`);
+
+        if (!isViewerAccessPasswordEnabled(appConfig)) {
+          return redirectResponse(redirectUrl);
+        }
+
+        if (!isViewerAccessPasswordConfigured()) {
+          redirectUrl.searchParams.set("viewerAccessError", "misconfigured");
+          return redirectResponse(redirectUrl);
+        }
+
         const formData = await request.formData();
         const password = String(formData.get("password") ?? "");
 
