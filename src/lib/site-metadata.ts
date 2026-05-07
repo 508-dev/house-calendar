@@ -1,4 +1,3 @@
-import type { Metadata } from "next";
 import type { SiteConfig } from "@/lib/config/config";
 
 const fallbackDescription =
@@ -6,10 +5,20 @@ const fallbackDescription =
 
 type BrandingConfig = SiteConfig["site"]["branding"];
 
+export type SiteMetadata = {
+  description: string;
+  icons?: {
+    apple: string;
+    icon: string;
+    shortcut: string;
+  };
+  title: string;
+};
+
 export function buildSiteMetadata(
   branding: BrandingConfig,
   fallbackTitle = "House Availability",
-): Metadata {
+): SiteMetadata {
   return {
     description: branding.description ?? fallbackDescription,
     icons: branding.faviconPath
@@ -23,7 +32,9 @@ export function buildSiteMetadata(
   };
 }
 
-export function buildFallbackMetadata(title = "House Availability"): Metadata {
+export function buildFallbackMetadata(
+  title = "House Availability",
+): SiteMetadata {
   return {
     description: fallbackDescription,
     title,

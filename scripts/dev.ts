@@ -4,14 +4,22 @@ import { resolveWorktreePorts, writeWorktreeEnvFiles } from "./worktree-ports";
 const bundle = await resolveWorktreePorts({ worktreeRoot: process.cwd() });
 writeWorktreeEnvFiles(bundle);
 
-console.log(`Starting Next.js on http://127.0.0.1:${bundle.app.port}`);
+console.log(`Starting TanStack Start on http://127.0.0.1:${bundle.app.port}`);
 console.log(
   `Expected Postgres on postgresql://127.0.0.1:${bundle.postgres.port}`,
 );
 
 const child = spawn(
   process.execPath,
-  ["x", "next", "dev", "--port", String(bundle.app.port)],
+  [
+    "x",
+    "vite",
+    "dev",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    String(bundle.app.port),
+  ],
   {
     cwd: bundle.worktreeRoot,
     env: {

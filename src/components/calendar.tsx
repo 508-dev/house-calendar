@@ -1,8 +1,27 @@
 "use client";
 
-import { addDays, format, getDay, isAfter, parseISO } from "date-fns";
+import { format, parseISO } from "date-fns";
 import type { FocusEvent, MouseEvent } from "react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type {
+  AnchorRect,
+  CalendarTimedNotes,
+  PreviewPosition,
+  PreviewSize,
+  ViewportSize,
+} from "@/components/calendar-utils";
+import {
+  buildDayAriaLabel,
+  buildWeeks,
+  clampPreviewPosition,
+  formatRoomSummary,
+  getAnchorPreviewPosition,
+  getDayStatusLabel,
+  getPointerPreviewPosition,
+  getRoomStatusLabel,
+  getWholeHouseDetailLabel,
+  resolveDayEventText,
+} from "@/components/calendar-utils";
 import { currentDateInTimeZone, formatTimeInTimeZone } from "@/lib/house/date";
 import type { DailyAvailability } from "@/lib/house/types";
 
@@ -10,10 +29,7 @@ type CalendarProps = {
   days: DailyAvailability[];
   houseName: string;
   requestEnabled: boolean;
-  timedNotes: {
-    showTime: boolean;
-    textSource: "title" | "description" | "title_then_description";
-  };
+  timedNotes: CalendarTimedNotes;
   timezone: string;
 };
 
@@ -42,50 +58,6 @@ const hoverPreviewMediaQuery =
 
 type StatusKey = keyof typeof statusDotClasses;
 
-type CalendarCell = {
-  id: string;
-  dateLabel?: string;
-  day?: DailyAvailability;
-};
-
-type CalendarMonthMarker = {
-  label: string;
-  monthKey: string;
-  startColumn: number;
-};
-
-type CalendarWeek = {
-  id: string;
-  cells: CalendarCell[];
-  monthMarker?: CalendarMonthMarker;
-};
-
-type PreviewPosition = {
-  anchorOffsetX?: number;
-  placement?: "above" | "below";
-  x: number;
-  y: number;
-};
-
-type PreviewSize = {
-  height: number;
-  width: number;
-};
-
-type ViewportSize = {
-  height: number;
-  width: number;
-};
-
-type AnchorRect = {
-  bottom: number;
-  height: number;
-  left: number;
-  right: number;
-  top: number;
-  width: number;
-};
-
 type PreviewRequest =
   | {
       anchorRect: AnchorRect;
@@ -97,10 +69,6 @@ type PreviewRequest =
       pointer: { x: number; y: number };
       type: "pointer";
     };
-
-const previewViewportPadding = 16;
-const previewPointerGap = 18;
-const previewAnchorGap = 10;
 
 function isPastDate(date: string, today: string): boolean {
   return date < today;
@@ -117,204 +85,8 @@ function getDefaultSelectedDate(
   );
 }
 
-export function buildWeeks(days: DailyAvailability[]): CalendarWeek[] {
-  if (days.length === 0) {
-    return [];
-  }
-
-  const dayMap = new Map(days.map((day) => [day.date, day]));
-  const firstDay = days[0];
-  const lastDay = days.at(-1);
-
-  if (!firstDay || !lastDay) {
-    return [];
-  }
-
-  const firstDate = parseISO(firstDay.date);
-  const lastDate = parseISO(lastDay.date);
-  const weeks: CalendarWeek[] = [];
-  const calendarStart = addDays(firstDate, -getDay(firstDate));
-  const calendarEnd = addDays(lastDate, 6 - getDay(lastDate));
-  const firstDateKey = format(firstDate, "yyyy-MM-dd");
-
-  let cursor = calendarStart;
-
-  while (!isAfter(cursor, calendarEnd)) {
-    const cells: CalendarCell[] = [];
-    let monthMarker: CalendarMonthMarker | undefined;
-    let monthMarkerPriority = 0;
-
-    for (let offset = 0; offset < 7; offset += 1) {
-      const cellDate = addDays(cursor, offset);
-      const dateKey = format(cellDate, "yyyy-MM-dd");
-      const isVisibleDate = dateKey >= firstDay.date && dateKey <= lastDay.date;
-
-      if (!isVisibleDate) {
-        cells.push({
-          id: `${dateKey}-blank`,
-        });
-        continue;
-      }
-
-      const isFirstVisibleDay = dateKey === firstDateKey;
-      const isFirstDayOfMonth = format(cellDate, "d") === "1";
-      const markerPriority = isFirstDayOfMonth ? 2 : isFirstVisibleDay ? 1 : 0;
-
-      if (markerPriority > monthMarkerPriority) {
-        monthMarker = {
-          label: format(cellDate, "MMMM yyyy"),
-          monthKey: format(cellDate, "yyyy-MM"),
-          startColumn: offset + 1,
-        };
-        monthMarkerPriority = markerPriority;
-      }
-
-      cells.push({
-        id: dateKey,
-        dateLabel: format(cellDate, "d"),
-        day: dayMap.get(dateKey),
-      });
-    }
-
-    weeks.push({
-      id: format(cursor, "yyyy-MM-dd"),
-      cells,
-      monthMarker,
-    });
-
-    cursor = addDays(cursor, 7);
-  }
-
-  return weeks;
-}
-
-function getDayStatusLabel(day: DailyAvailability): string {
-  const hasSingleRoom = day.rooms.length === 1;
-
-  switch (day.status) {
-    case "available":
-      return "Available";
-    case "tentative":
-      return hasSingleRoom ? "Tentative" : "Tentative stay";
-    case "partial":
-      return "Partially occupied";
-    case "unavailable":
-      return hasSingleRoom ? "Occupied" : "Whole house occupied";
-    case "unknown":
-      return "Needs interpretation";
-  }
-}
-
-function getRoomStatusLabel(
-  status: DailyAvailability["rooms"][number]["status"],
-): string {
-  switch (status) {
-    case "free":
-      return "Free";
-    case "tentative":
-      return "Tentative";
-    case "occupied":
-      return "Occupied";
-  }
-}
-
-function formatRoomSummary(day: DailyAvailability): string {
-  const hasSingleRoom = day.rooms.length === 1;
-  const occupiedCount = day.rooms.filter(
-    (room) => room.status === "occupied",
-  ).length;
-  const tentativeCount = day.rooms.filter(
-    (room) => room.status === "tentative",
-  ).length;
-  const formatRoomCount = (count: number, status: "occupied" | "tentative") =>
-    `${count} room${count === 1 ? "" : "s"} ${status}`;
-
-  if (hasSingleRoom) {
-    if (occupiedCount > 0) {
-      return "Room occupied";
-    }
-
-    if (tentativeCount > 0) {
-      return "Room tentative";
-    }
-
-    return "Room free";
-  }
-
-  if (occupiedCount === 0 && tentativeCount === 0) {
-    return "All rooms free";
-  }
-
-  if (occupiedCount === day.rooms.length) {
-    return "Whole house occupied";
-  }
-
-  if (occupiedCount === 0 && tentativeCount === day.rooms.length) {
-    return "Whole house tentative";
-  }
-
-  if (occupiedCount > 0 && tentativeCount > 0) {
-    return `${formatRoomCount(occupiedCount, "occupied")}, ${formatRoomCount(
-      tentativeCount,
-      "tentative",
-    )}`;
-  }
-
-  if (occupiedCount === 0) {
-    return formatRoomCount(tentativeCount, "tentative");
-  }
-
-  return formatRoomCount(occupiedCount, "occupied");
-}
-
-export function getWholeHouseDetailLabel(day: DailyAvailability): string {
-  if (day.rooms.length === 1) {
-    return getDayStatusLabel(day);
-  }
-
-  if (day.status === "unknown") {
-    return getDayStatusLabel(day);
-  }
-
-  return formatRoomSummary(day);
-}
-
-export function buildDayAriaLabel(day: DailyAvailability): string {
-  const labels = [
-    format(parseISO(day.date), "MMMM d, yyyy"),
-    getDayStatusLabel(day),
-    formatRoomSummary(day),
-  ];
-
-  if (day.events.length > 0) {
-    labels.push(
-      day.events.length === 1
-        ? "1 day event"
-        : `${day.events.length} day events`,
-    );
-  }
-
-  return labels.join(". ");
-}
-
 function getDayEventSectionLabel(_day: DailyAvailability): string {
   return "On this day";
-}
-
-export function resolveDayEventText(
-  event: DailyAvailability["events"][number],
-  textSource: CalendarProps["timedNotes"]["textSource"],
-): string {
-  const description = event.description?.trim();
-
-  switch (textSource) {
-    case "description":
-      return description || event.title;
-    case "title_then_description":
-      return description ? `${event.title}: ${description}` : event.title;
-    default:
-      return event.title;
-  }
 }
 
 function formatDayEventTimeLabel(
@@ -386,14 +158,6 @@ function formatPanelDate(date: string): string {
   return format(parseISO(date), "MMM d");
 }
 
-function clampToRange(value: number, min: number, max: number): number {
-  if (max < min) {
-    return min;
-  }
-
-  return Math.max(min, Math.min(value, max));
-}
-
 function getViewportSize(): ViewportSize {
   if (typeof window === "undefined") {
     return { height: 0, width: 0 };
@@ -405,58 +169,10 @@ function getViewportSize(): ViewportSize {
   };
 }
 
-function constrainPreviewSize(
-  previewSize: PreviewSize,
-  viewportSize: ViewportSize,
-): PreviewSize {
-  return {
-    height: Math.max(
-      0,
-      Math.min(
-        previewSize.height,
-        viewportSize.height - previewViewportPadding * 2,
-      ),
-    ),
-    width: Math.max(
-      0,
-      Math.min(
-        previewSize.width,
-        viewportSize.width - previewViewportPadding * 2,
-      ),
-    ),
-  };
-}
-
 function getFallbackPreviewSize(viewportSize: ViewportSize): PreviewSize {
-  return constrainPreviewSize(
-    {
-      height: 448,
-      width: 288,
-    },
-    viewportSize,
-  );
-}
-
-function clampPreviewPosition(
-  position: PreviewPosition,
-  previewSize: PreviewSize,
-  viewportSize: ViewportSize,
-): PreviewPosition {
-  const constrainedPreviewSize = constrainPreviewSize(
-    previewSize,
-    viewportSize,
-  );
-  const maxX =
-    viewportSize.width - constrainedPreviewSize.width - previewViewportPadding;
-  const maxY =
-    viewportSize.height -
-    constrainedPreviewSize.height -
-    previewViewportPadding;
-
   return {
-    ...position,
-    x: clampToRange(position.x, previewViewportPadding, maxX),
-    y: clampToRange(position.y, previewViewportPadding, maxY),
+    height: Math.max(0, Math.min(448, viewportSize.height - 32)),
+    width: Math.max(0, Math.min(288, viewportSize.width - 32)),
   };
 }
 
@@ -470,85 +186,6 @@ function getAnchorRect(element: HTMLElement): AnchorRect {
     right: rect.right,
     top: rect.top,
     width: rect.width,
-  };
-}
-
-export function getPointerPreviewPosition(
-  pointer: { x: number; y: number },
-  previewSize: PreviewSize,
-  viewportSize: ViewportSize,
-): PreviewPosition {
-  const constrainedPreviewSize = constrainPreviewSize(
-    previewSize,
-    viewportSize,
-  );
-  const maxX =
-    viewportSize.width - constrainedPreviewSize.width - previewViewportPadding;
-  const maxY =
-    viewportSize.height -
-    constrainedPreviewSize.height -
-    previewViewportPadding;
-
-  return {
-    x: clampToRange(
-      pointer.x + previewPointerGap,
-      previewViewportPadding,
-      maxX,
-    ),
-    y: clampToRange(
-      pointer.y + previewPointerGap,
-      previewViewportPadding,
-      maxY,
-    ),
-  };
-}
-
-export function getAnchorPreviewPosition(
-  anchorRect: AnchorRect,
-  previewSize: PreviewSize,
-  viewportSize: ViewportSize,
-): PreviewPosition {
-  const constrainedPreviewSize = constrainPreviewSize(
-    previewSize,
-    viewportSize,
-  );
-  const maxX =
-    viewportSize.width - constrainedPreviewSize.width - previewViewportPadding;
-  const maxY =
-    viewportSize.height -
-    constrainedPreviewSize.height -
-    previewViewportPadding;
-  const centeredX =
-    anchorRect.left + anchorRect.width / 2 - constrainedPreviewSize.width / 2;
-  const belowY = anchorRect.bottom + previewAnchorGap;
-  const aboveY =
-    anchorRect.top - constrainedPreviewSize.height - previewAnchorGap;
-  const fitsBelow = belowY <= maxY;
-  const fitsAbove = aboveY >= previewViewportPadding;
-  const spaceBelow =
-    viewportSize.height -
-    previewViewportPadding -
-    anchorRect.bottom -
-    previewAnchorGap;
-  const spaceAbove = anchorRect.top - previewViewportPadding - previewAnchorGap;
-  const shouldPlaceBelow =
-    fitsBelow || (!fitsAbove && spaceBelow >= spaceAbove);
-  const nextX = clampToRange(centeredX, previewViewportPadding, maxX);
-  const nextY = clampToRange(
-    shouldPlaceBelow ? belowY : aboveY,
-    previewViewportPadding,
-    maxY,
-  );
-
-  return {
-    anchorOffsetX: clampToRange(
-      anchorRect.left + anchorRect.width / 2 - nextX,
-      24,
-      constrainedPreviewSize.width - 24,
-    ),
-    placement: shouldPlaceBelow ? "below" : "above",
-    x: nextX,
-    y: nextY,
   };
 }
 
@@ -884,7 +521,7 @@ export function Calendar({
 
   return (
     <section className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
-      <div className="min-w-0 rounded-[1.75rem] border border-[color:var(--app-card-border)] bg-[color:var(--app-card)] shadow-[var(--app-shadow)]">
+      <div className="min-w-0 self-start rounded-[1.75rem] border border-[color:var(--app-card-border)] bg-[color:var(--app-card)] shadow-[var(--app-shadow)]">
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[color:var(--app-card-border)] px-5 py-4 sm:px-6">
           <div>
             <h1 className="text-2xl font-semibold tracking-[-0.04em] sm:text-3xl">
@@ -915,7 +552,7 @@ export function Calendar({
               </div>
 
               <div className="h-[70vh] overflow-y-auto pr-1 sm:h-[78vh]">
-                <div className="space-y-2 px-1 pb-1">
+                <div className="space-y-2 px-1 pb-6">
                   {weeks.map((week) => (
                     <div key={week.id} className="space-y-2">
                       {week.monthMarker ? (

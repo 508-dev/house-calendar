@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { NextRequest } from "next/server";
 import { buildRequestUrl } from "./request-url";
 
 describe("request URL helpers", () => {
-  test("reuses Next.js request URL metadata for same-origin redirects", () => {
-    const request = new NextRequest(
+  test("reuses request URL metadata for same-origin redirects", () => {
+    const request = new Request(
       "https://house.example.com/admin/login?error=bad#ignored",
       {
         method: "POST",
@@ -16,18 +15,15 @@ describe("request URL helpers", () => {
     );
   });
 
-  test("prefers forwarded origin headers when Next sees an internal host", () => {
-    const request = new NextRequest(
-      "http://localhost:3000/tokyo/viewer-access",
-      {
-        headers: {
-          host: "localhost:3000",
-          "x-forwarded-host": "house.example.com",
-          "x-forwarded-proto": "https",
-        },
-        method: "POST",
+  test("prefers forwarded origin headers when the app sees an internal host", () => {
+    const request = new Request("http://localhost:3000/tokyo/viewer-access", {
+      headers: {
+        host: "localhost:3000",
+        "x-forwarded-host": "house.example.com",
+        "x-forwarded-proto": "https",
       },
-    );
+      method: "POST",
+    });
 
     expect(buildRequestUrl(request, "/tokyo").toString()).toBe(
       "https://house.example.com/tokyo",
@@ -35,7 +31,7 @@ describe("request URL helpers", () => {
   });
 
   test("clears the original query string before callers add redirect params", () => {
-    const request = new NextRequest(
+    const request = new Request(
       "https://house.example.com/tokyo/viewer-access?from=elsewhere",
       {
         method: "POST",

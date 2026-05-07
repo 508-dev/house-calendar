@@ -1,5 +1,3 @@
-import "server-only";
-
 import { differenceInCalendarDays, parseISO, startOfMonth } from "date-fns";
 import {
   type AppConfig,

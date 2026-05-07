@@ -1,5 +1,3 @@
-import "server-only";
-
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { cache } from "react";

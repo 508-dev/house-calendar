@@ -1,7 +1,5 @@
-import type { NextRequest } from "next/server";
-
 function getFirstHeaderValue(
-  request: NextRequest,
+  request: Request,
   name: string,
 ): string | undefined {
   const value = request.headers.get(name);
@@ -15,7 +13,7 @@ function getFirstHeaderValue(
 }
 
 function getForwardedProtocol(
-  request: NextRequest,
+  request: Request,
 ): "http:" | "https:" | undefined {
   const value = getFirstHeaderValue(request, "x-forwarded-proto");
 
@@ -32,7 +30,7 @@ function getForwardedProtocol(
   return undefined;
 }
 
-function getForwardedHost(request: NextRequest): URL | undefined {
+function getForwardedHost(request: Request): URL | undefined {
   const value =
     getFirstHeaderValue(request, "x-forwarded-host") ??
     getFirstHeaderValue(request, "host");
@@ -60,8 +58,8 @@ function getForwardedHost(request: NextRequest): URL | undefined {
   }
 }
 
-export function buildRequestUrl(request: NextRequest, path: string): URL {
-  const url = request.nextUrl.clone();
+export function buildRequestUrl(request: Request, path: string): URL {
+  const url = new URL(request.url);
 
   const forwardedProtocol = getForwardedProtocol(request);
   const forwardedHost = getForwardedHost(request);

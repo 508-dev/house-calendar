@@ -28,12 +28,12 @@ Do not assume this is a generic starter app. The domain model matters here.
 
 ## Runtime Model
 
-- The app runs on the host with Bun and Next.js.
+- The app runs on the host with Bun, Vite, and TanStack Start.
 - Postgres runs in Docker Compose for local development.
 - Drizzle is the ORM and typed query layer for Postgres.
 - shadcn/ui is installed for shared React UI primitives.
 - Per-worktree ports are derived by `scripts/worktree-ports.ts`.
-- `bun dev` already handles writing `.env` and starting Next on the derived port.
+- `bun dev` already handles writing `.env` and starting Vite on the derived port.
 
 Use these commands instead of improvising:
 
@@ -50,7 +50,7 @@ Use these commands instead of improvising:
 - `bun run format`
 - `bun run check`
 
-Do not replace the wrapped `typecheck` flow with raw `tsc --noEmit`. This repo uses `scripts/typecheck.ts` because of Next route type generation behavior.
+`bun run typecheck` runs `tsc --noEmit`. TanStack Router route types live in the generated `src/routeTree.gen.ts`; keep it current when routes change.
 
 Current calendar sync behavior:
 
@@ -130,7 +130,8 @@ Current boundaries:
 - `src/lib/config/*` for instance config schema and mapping
 - `src/lib/server/*` for server-only runtime helpers
 - `src/lib/server/db-schema.ts` for Drizzle table definitions
-- `src/app/*` for UI and route handlers
+- `src/routes/*` for TanStack Start routes and server route handlers
+- `src/app/globals.css` for app-wide CSS consumed by TanStack Start
 - `src/components/ui/*` for generated shadcn/ui primitives
 - `scripts/*` for local workflow and build/tooling glue
 
@@ -142,17 +143,15 @@ Preferred direction:
 - Use shadcn/ui for shared controls and overlays, but keep product-specific surfaces like the availability calendar custom.
 - Keep app-specific CSS tokens under `--app-*` so they do not collide with shadcn semantic tokens.
 
-## Next.js Rules
+## TanStack Start Rules
 
-This repo uses modern App Router Next.js. Do not rely on stale assumptions.
+This repo uses TanStack Start and TanStack Router. Do not rely on stale routing or server-function assumptions.
 
-Before framework-level edits, check the local docs in:
-
-- `node_modules/next/dist/docs/`
+Before framework-level edits, check current TanStack Start and Router docs.
 
 Especially if changing:
 
-- route handlers
+- server route handlers
 - metadata
 - type generation
 - build and dev workflow

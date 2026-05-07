@@ -115,6 +115,27 @@ After deployment, verify:
 - admin login or setup works
 - the sync action at `/admin/{siteId}/sync` completes successfully
 
+For a programmatic post-deploy smoke check, run:
+
+```bash
+bun run regression -- --url https://your-deployed-app.example
+```
+
+This checks viewer privacy markers, public build output, health, viewer routing,
+and safe admin auth redirects. It does not submit admin credentials or mutate
+calendar data.
+
+If you want it to verify a real admin login, provide credentials through
+deployment-local env vars:
+
+```bash
+REGRESSION_ADMIN_EMAIL=owner@example.com \
+REGRESSION_ADMIN_PASSWORD='admin-password' \
+bun run regression -- --url https://your-deployed-app.example
+```
+
+Do not commit these values.
+
 ## Notes
 
 - The current calendar cache is in-memory and process-local, so restarts clear it
