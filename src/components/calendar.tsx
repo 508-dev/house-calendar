@@ -579,6 +579,7 @@ export function Calendar({
   const calendarScrollerRef = useRef<HTMLDivElement | null>(null);
   const previewPanelRef = useRef<HTMLDivElement | null>(null);
   const calendarScrollFrameRef = useRef<number | null>(null);
+  const activePreviewRequestRef = useRef<PreviewRequest | null>(null);
   const activePreviewRequest = hoverPreviewRequest ?? selectedPreviewRequest;
 
   const clearHoverPreview = () => {
@@ -680,19 +681,23 @@ export function Calendar({
     const viewportSize = getViewportSize();
     const anchorElement = event.currentTarget;
     const anchorRect = getAnchorRect(anchorElement);
+    const pointer = {
+      x: event.clientX - anchorRect.left,
+      y: event.clientY - anchorRect.top,
+    };
 
     setHoverPreviewRequest((currentRequest) =>
       currentRequest?.type === "pointer" &&
       currentRequest.date === dayDate &&
       currentRequest.element === anchorElement
-        ? currentRequest
+        ? {
+            ...currentRequest,
+            pointer,
+          }
         : {
             date: dayDate,
             element: anchorElement,
-            pointer: {
-              x: event.clientX - anchorRect.left,
-              y: event.clientY - anchorRect.top,
-            },
+            pointer,
             type: "pointer",
           },
     );
@@ -725,6 +730,10 @@ export function Calendar({
   }, []);
 
   useEffect(() => {
+    activePreviewRequestRef.current = activePreviewRequest;
+  }, [activePreviewRequest]);
+
+  useEffect(() => {
     const handleViewportResize = () => {
       setViewportSize(getViewportSize());
     };
@@ -736,6 +745,10 @@ export function Calendar({
 
   useEffect(() => {
     const scheduleCalendarScrollUpdate = () => {
+      if (!activePreviewRequestRef.current) {
+        return;
+      }
+
       if (calendarScrollFrameRef.current !== null) {
         return;
       }
@@ -769,6 +782,13 @@ export function Calendar({
   }, []);
 
   useLayoutEffect(() => {
+    void calendarScrollRevision;
+    void viewportSize;
+
+    if (!activePreviewRequest) {
+      return;
+    }
+
     const rect = calendarScrollerRef.current?.getBoundingClientRect();
 
     if (!rect) {
@@ -786,7 +806,7 @@ export function Calendar({
         ? currentClipRect
         : nextClipRect,
     );
-  });
+  }, [activePreviewRequest, calendarScrollRevision, viewportSize]);
 
   useLayoutEffect(() => {
     void calendarScrollRevision;
