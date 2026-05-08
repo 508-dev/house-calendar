@@ -168,8 +168,10 @@ bun run test:integration
 
 The Playwright config starts `bun dev` on the derived worktree app port and
 uses `config/config.example.json` so private local config does not change test
-coverage. To run against an already-running app, pass `PLAYWRIGHT_BASE_URL`,
-for example:
+coverage. By default it does not reuse an existing server on that port. If you
+know the existing server was started with the same deterministic config, set
+`PLAYWRIGHT_REUSE_EXISTING_SERVER=1` to opt into reuse. To run against an
+already-running app, pass `PLAYWRIGHT_BASE_URL`, for example:
 
 ```bash
 PLAYWRIGHT_BASE_URL=http://127.0.0.1:5223 bun run test:integration

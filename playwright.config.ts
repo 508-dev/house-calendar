@@ -7,6 +7,9 @@ const portBundle = configuredBaseUrl
   : await resolveWorktreePorts({ worktreeRoot: process.cwd() });
 
 const resolvedPort = portBundle?.app.port;
+const reuseExistingServer = ["1", "true"].includes(
+  process.env.PLAYWRIGHT_REUSE_EXISTING_SERVER?.toLowerCase() ?? "",
+);
 let baseURL = configuredBaseUrl;
 
 if (!baseURL) {
@@ -40,7 +43,7 @@ export default defineConfig({
     ? undefined
     : {
         command: "bun dev",
-        reuseExistingServer: !process.env.CI,
+        reuseExistingServer,
         timeout: 120_000,
         url: `${baseURL}/api/health`,
       },

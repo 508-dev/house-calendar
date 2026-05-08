@@ -59,10 +59,31 @@ test("selecting an upcoming busy day updates the selected date and hash", async 
   await page.goto("/tokyo");
   await waitForCalendarHydration(page);
 
-  const busyButton = upcomingBusyDaysPanel(page).getByRole("button").first();
-  await expect(busyButton).toBeVisible();
+  const initialHash = new URL(page.url()).hash;
+  const initialSelectedDate = await selectedDatePanel(page)
+    .getByRole("heading")
+    .innerText();
+  const busyButtons = upcomingBusyDaysPanel(page).getByRole("button");
+  await expect(busyButtons.first()).toBeVisible();
 
-  const selectedDate = firstLine(await busyButton.innerText());
+  let busyButton = busyButtons.first();
+  let selectedDate = "";
+
+  for (let index = 0; index < (await busyButtons.count()); index += 1) {
+    const candidateButton = busyButtons.nth(index);
+    const candidateDate = firstLine(await candidateButton.innerText());
+
+    if (candidateDate && candidateDate !== initialSelectedDate) {
+      busyButton = candidateButton;
+      selectedDate = candidateDate;
+      break;
+    }
+  }
+
+  expect(
+    selectedDate,
+    "expected an upcoming busy day different from the initially selected date",
+  ).not.toBe("");
 
   await busyButton.click();
 
@@ -72,7 +93,8 @@ test("selecting an upcoming busy day updates the selected date and hash", async 
       name: selectedDate,
     }),
   ).toBeVisible();
-  await expect(page).toHaveURL(/\/tokyo#date=\d{4}-\d{2}-\d{2}$/);
+  await expect.poll(() => new URL(page.url()).hash).not.toBe(initialHash);
+  expect(new URL(page.url()).hash).toMatch(/^#date=\d{4}-\d{2}-\d{2}$/);
   await expect(page.getByRole("button", { pressed: true })).toHaveCount(1);
 });
 
