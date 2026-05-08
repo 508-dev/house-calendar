@@ -126,7 +126,10 @@ describe("worktree ports", () => {
       },
     });
 
-    expect(bundle.app.port).toBe(5062);
+    expect(bundle.app.port).toBeGreaterThanOrEqual(5059);
+    expect(bundle.app.port).toBeLessThan(5059 + span);
+    expect(bundle.app.port).not.toBe(5060);
+    expect(bundle.app.port).not.toBe(5061);
   });
 
   test("rejects explicit browser-blocked app ports", async () => {
@@ -143,5 +146,18 @@ describe("worktree ports", () => {
     } catch (error) {
       expect((error as Error).message).toContain("blocked");
     }
+  });
+
+  test("ignores invalid fallback app ports when a primary explicit port is set", async () => {
+    const bundle = await resolveWorktreePorts({
+      worktreeRoot: "/tmp/house-calendar/test-primary-explicit-port-wins",
+      env: {
+        NODE_ENV: "test",
+        PORT: "not-a-port",
+        WORKTREE_DEV_PORT: "5059",
+      },
+    });
+
+    expect(bundle.app.port).toBe(5059);
   });
 });

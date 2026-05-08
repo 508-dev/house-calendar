@@ -118,14 +118,18 @@ function resolvePort({
   span: number;
   worktreeRoot: string;
 }): Omit<PortResolution, "port"> & { port?: number } {
+  const primaryExplicitPortValue = env[explicitPortEnvName];
   const primaryExplicitPort = parsePortLike(
-    env[explicitPortEnvName],
+    primaryExplicitPortValue,
     explicitPortEnvName,
   );
-  const fallbackExplicitPort = parsePortLike(
-    fallbackPortEnvName ? env[fallbackPortEnvName] : undefined,
-    fallbackPortEnvName ?? explicitPortEnvName,
-  );
+  const fallbackExplicitPort =
+    primaryExplicitPortValue === undefined || primaryExplicitPortValue === ""
+      ? parsePortLike(
+          fallbackPortEnvName ? env[fallbackPortEnvName] : undefined,
+          fallbackPortEnvName ?? explicitPortEnvName,
+        )
+      : undefined;
   const explicitPort = primaryExplicitPort ?? fallbackExplicitPort;
   const explicitPortSource =
     primaryExplicitPort !== undefined
