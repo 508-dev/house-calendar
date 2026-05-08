@@ -17,6 +17,29 @@ function listen(port: number): Promise<ReturnType<typeof createServer>> {
   });
 }
 
+async function reserveBasePortWithOccupiedOffset(
+  span: number,
+  targetOffset: number,
+): Promise<{ basePort: number; server: ReturnType<typeof createServer> }> {
+  const startPort = 49152;
+  const endPort = 65535 - span + 1;
+
+  for (let basePort = startPort; basePort <= endPort; basePort += 1) {
+    const occupiedPort = basePort + targetOffset;
+
+    try {
+      const server = await listen(occupiedPort);
+      return { basePort, server };
+    } catch {
+      continue;
+    }
+  }
+
+  throw new Error(
+    `Unable to reserve a test port for offset ${targetOffset} within a span of ${span}.`,
+  );
+}
+
 function findWorktreeRootWithOffset(span: number, targetOffset: number): string {
   for (let attempt = 0; attempt < 10_000; attempt += 1) {
     const worktreeRoot = join(
@@ -90,10 +113,12 @@ describe("worktree ports", () => {
   test("probes forward when the hashed port is already occupied", async () => {
     const worktreeRoot = join(tmpdir(), "house-calendar-test-port-collision");
     const span = 5;
-    const basePort = 49152;
-    const offset = worktreePortOffset(worktreeRoot, span);
-    const occupiedPort = basePort + offset;
-    const server = await listen(occupiedPort);
+    const hashedOffset = worktreePortOffset(worktreeRoot, span);
+    const { basePort, server } = await reserveBasePortWithOccupiedOffset(
+      span,
+      hashedOffset,
+    );
+    const occupiedPort = basePort + hashedOffset;
 
     try {
       const bundle = await resolveWorktreePorts({
