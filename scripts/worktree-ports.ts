@@ -130,6 +130,10 @@ function resolvePort({
           fallbackPortEnvName ?? explicitPortEnvName,
         )
       : undefined;
+  const shouldIgnoreBlockedFallbackExplicitPort =
+    primaryExplicitPort === undefined &&
+    fallbackExplicitPort !== undefined &&
+    disallowedPorts?.has(fallbackExplicitPort);
   const explicitPort = primaryExplicitPort ?? fallbackExplicitPort;
   const explicitPortSource =
     primaryExplicitPort !== undefined
@@ -137,8 +141,28 @@ function resolvePort({
       : fallbackExplicitPort !== undefined
         ? fallbackPortEnvName ?? explicitPortEnvName
         : explicitPortEnvName;
+  const resolvedBasePort =
+    basePort ??
+    parsePortLike(env[basePortEnvName], basePortEnvName) ??
+    defaultBasePort;
 
   if (explicitPort !== undefined) {
+    if (shouldIgnoreBlockedFallbackExplicitPort) {
+      if (resolvedBasePort + span - 1 > MAX_PORT) {
+        throw new Error(
+          `${basePortEnvName} + ${WORKTREE_PORT_SPAN_ENV} - 1 must not exceed ${MAX_PORT}.`,
+        );
+      }
+
+      return {
+        basePort: resolvedBasePort,
+        offset: worktreePortOffset(worktreeRoot, span),
+        pathKey,
+        span,
+        usingExplicitPort: false,
+      };
+    }
+
     if (disallowedPorts?.has(explicitPort)) {
       throw new Error(
         `${explicitPortSource} resolves to ${explicitPort}, which is blocked for browser-accessible app ports.`,
@@ -154,11 +178,6 @@ function resolvePort({
       usingExplicitPort: true,
     };
   }
-
-  const resolvedBasePort =
-    basePort ??
-    parsePortLike(env[basePortEnvName], basePortEnvName) ??
-    defaultBasePort;
 
   if (resolvedBasePort + span - 1 > MAX_PORT) {
     throw new Error(

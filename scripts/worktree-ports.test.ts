@@ -168,12 +168,32 @@ describe("worktree ports", () => {
         worktreeRoot: join(tmpdir(), "house-calendar-test-explicit-blocked-port"),
         env: {
           NODE_ENV: "test",
-          PORT: "5060",
+          WORKTREE_DEV_PORT: "5060",
         },
       });
     } catch (error) {
       expect((error as Error).message).toContain("blocked");
     }
+  });
+
+  test("recomputes when a fallback app port is blocked", async () => {
+    const span = 4;
+    const worktreeRoot = findWorktreeRootWithOffset(span, 1);
+    const bundle = await resolveWorktreePorts({
+      worktreeRoot,
+      env: {
+        NODE_ENV: "test",
+        PORT: "5060",
+        WORKTREE_DEV_BASE_PORT: "5059",
+        WORKTREE_POSTGRES_BASE_PORT: "49200",
+        WORKTREE_PORT_SPAN: String(span),
+      },
+    });
+
+    expect(bundle.app.port).toBeGreaterThanOrEqual(5059);
+    expect(bundle.app.port).toBeLessThan(5059 + span);
+    expect(bundle.app.port).not.toBe(5060);
+    expect(bundle.app.port).not.toBe(5061);
   });
 
   test("ignores invalid fallback app ports when a primary explicit port is set", async () => {
