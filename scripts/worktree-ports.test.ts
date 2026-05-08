@@ -196,6 +196,27 @@ describe("worktree ports", () => {
     expect(bundle.app.port).not.toBe(5061);
   });
 
+  test("reports when the entire app port range is browser-blocked", async () => {
+    expect.assertions(3);
+
+    try {
+      await resolveWorktreePorts({
+        worktreeRoot: join(tmpdir(), "house-calendar-test-all-blocked-range"),
+        env: {
+          NODE_ENV: "test",
+          WORKTREE_DEV_BASE_PORT: "5060",
+          WORKTREE_POSTGRES_BASE_PORT: "49200",
+          WORKTREE_PORT_SPAN: "2",
+        },
+      });
+    } catch (error) {
+      const message = (error as Error).message;
+      expect(message).toContain("every candidate is blocked");
+      expect(message).toContain("WORKTREE_DEV_BASE_PORT");
+      expect(message).toContain("WORKTREE_PORT_SPAN");
+    }
+  });
+
   test("ignores invalid fallback app ports when a primary explicit port is set", async () => {
     const bundle = await resolveWorktreePorts({
       worktreeRoot: join(

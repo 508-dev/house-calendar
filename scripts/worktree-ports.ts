@@ -241,11 +241,14 @@ async function resolveAvailablePort(
     };
   }
 
+  let skippedDisallowedPortCount = 0;
+
   for (let attempt = 0; attempt < resolution.span; attempt += 1) {
     const offset = (resolution.offset + attempt) % resolution.span;
     const port = resolution.basePort + offset;
 
     if (disallowedPorts?.has(port)) {
+      skippedDisallowedPortCount += 1;
       continue;
     }
 
@@ -256,6 +259,15 @@ async function resolveAvailablePort(
         port,
       };
     }
+  }
+
+  if (
+    disallowedPorts !== undefined &&
+    skippedDisallowedPortCount === resolution.span
+  ) {
+    throw new Error(
+      `No available port found from ${resolution.basePort} to ${resolution.basePort + resolution.span - 1} because every candidate is blocked for browser-accessible app ports. Adjust ${WORKTREE_DEV_BASE_PORT_ENV} or ${WORKTREE_PORT_SPAN_ENV}.`,
+    );
   }
 
   throw new Error(
