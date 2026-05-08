@@ -22,6 +22,7 @@
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "regression": "bun run scripts/regression-check.ts",
+    "test:integration": "playwright test",
     "check": "bun run typecheck && biome check . && bun run test"
   },
   "dependencies": {
@@ -47,6 +48,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.13",
+    "@playwright/test": "^1.59.1",
     "@tanstack/router-plugin": "1.167.35",
     "@types/node": "^20",
     "@types/react": "^19",

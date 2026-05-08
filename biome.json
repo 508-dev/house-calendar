@@ -8,7 +8,9 @@
       "!.output",
       "!src/routeTree.gen.ts",
       "!out",
-      "!build"
+      "!build",
+      "!playwright-report",
+      "!test-results"
     ]
   },
   "formatter": {

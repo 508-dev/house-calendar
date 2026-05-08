@@ -11,10 +11,20 @@ import {
 } from "@/lib/config/config";
 import exampleConfig from "../../../config/config.example.json";
 
-const localConfigPath = resolve(process.cwd(), "config/config.json");
+const configPathOverride = process.env.HOUSE_CALENDAR_CONFIG_PATH;
+const localConfigPath = resolve(
+  process.cwd(),
+  configPathOverride ?? "config/config.json",
+);
 
 const readAppConfig = (): AppConfig => {
   if (!existsSync(localConfigPath)) {
+    if (configPathOverride) {
+      throw new Error(
+        `HOUSE_CALENDAR_CONFIG_PATH does not exist: ${localConfigPath}`,
+      );
+    }
+
     return appConfigSchema.parse(exampleConfig);
   }
 
