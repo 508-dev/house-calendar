@@ -32,7 +32,7 @@ Do not assume this is a generic starter app. The domain model matters here.
 - Postgres runs in Docker Compose for local development.
 - Drizzle is the ORM and typed query layer for Postgres.
 - shadcn/ui is installed for shared React UI primitives.
-- Per-worktree ports are derived by `scripts/worktree-ports.ts`.
+- Per-worktree ports are derived by `scripts/worktree-ports.ts`, and app ports skip browser-blocked ports such as `5060` and `5061`.
 - `bun dev` already handles writing `.env` and starting Vite on the derived port.
 
 Use these commands instead of improvising:

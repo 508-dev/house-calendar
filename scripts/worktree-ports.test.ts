@@ -17,6 +17,17 @@ function listen(port: number): Promise<ReturnType<typeof createServer>> {
   });
 }
 
+function findWorktreeRootWithOffset(span: number, targetOffset: number): string {
+  for (let attempt = 0; attempt < 10_000; attempt += 1) {
+    const worktreeRoot = `/tmp/house-calendar/test-offset-${span}-${targetOffset}-${attempt}`;
+    if (worktreePortOffset(worktreeRoot, span) === targetOffset) {
+      return worktreeRoot;
+    }
+  }
+
+  throw new Error(`Unable to find worktree root for offset ${targetOffset}.`);
+}
+
 describe("worktree ports", () => {
   test("encodes DATABASE_URL credentials safely", async () => {
     const bundle = await resolveWorktreePorts({
@@ -99,6 +110,38 @@ describe("worktree ports", () => {
       await new Promise<void>((resolveClose) =>
         server.close(() => resolveClose()),
       );
+    }
+  });
+
+  test("skips browser-blocked app ports when the hashed port lands on one", async () => {
+    const span = 4;
+    const worktreeRoot = findWorktreeRootWithOffset(span, 1);
+    const bundle = await resolveWorktreePorts({
+      worktreeRoot,
+      env: {
+        NODE_ENV: "test",
+        WORKTREE_DEV_BASE_PORT: "5059",
+        WORKTREE_POSTGRES_BASE_PORT: "49200",
+        WORKTREE_PORT_SPAN: String(span),
+      },
+    });
+
+    expect(bundle.app.port).toBe(5062);
+  });
+
+  test("rejects explicit browser-blocked app ports", async () => {
+    expect.assertions(1);
+
+    try {
+      await resolveWorktreePorts({
+        worktreeRoot: "/tmp/house-calendar/test-explicit-blocked-port",
+        env: {
+          NODE_ENV: "test",
+          PORT: "5060",
+        },
+      });
+    } catch (error) {
+      expect((error as Error).message).toContain("blocked");
     }
   });
 });
