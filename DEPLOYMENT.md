@@ -64,6 +64,9 @@ The exact mechanism is up to your hosting setup. The important part is that the 
 config/config.json
 ```
 
+If your deployment needs to place the config somewhere else, set
+`HOUSE_CALENDAR_CONFIG_PATH` to that app-relative or absolute file path.
+
 ## Config Rules For Deployment
 
 Keep the config split intact:

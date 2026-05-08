@@ -30,9 +30,7 @@ async function reserveBasePortWithOccupiedOffset(
     try {
       const server = await listen(occupiedPort);
       return { basePort, server };
-    } catch {
-      continue;
-    }
+    } catch {}
   }
 
   throw new Error(
@@ -40,7 +38,10 @@ async function reserveBasePortWithOccupiedOffset(
   );
 }
 
-function findWorktreeRootWithOffset(span: number, targetOffset: number): string {
+function findWorktreeRootWithOffset(
+  span: number,
+  targetOffset: number,
+): string {
   for (let attempt = 0; attempt < 10_000; attempt += 1) {
     const worktreeRoot = join(
       tmpdir(),
@@ -165,7 +166,10 @@ describe("worktree ports", () => {
 
     try {
       await resolveWorktreePorts({
-        worktreeRoot: join(tmpdir(), "house-calendar-test-explicit-blocked-port"),
+        worktreeRoot: join(
+          tmpdir(),
+          "house-calendar-test-explicit-blocked-port",
+        ),
         env: {
           NODE_ENV: "test",
           WORKTREE_DEV_PORT: "5060",

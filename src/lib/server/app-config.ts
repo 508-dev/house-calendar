@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { cache } from "react";
 import {
@@ -11,11 +11,26 @@ import {
 } from "@/lib/config/config";
 import exampleConfig from "../../../config/config.example.json";
 
-const localConfigPath = resolve(process.cwd(), "config/config.json");
+const configPathOverride =
+  process.env.HOUSE_CALENDAR_CONFIG_PATH?.trim() || undefined;
+const localConfigPath = resolve(
+  process.cwd(),
+  configPathOverride ?? "config/config.json",
+);
 
 const readAppConfig = (): AppConfig => {
   if (!existsSync(localConfigPath)) {
+    if (configPathOverride) {
+      throw new Error(
+        `HOUSE_CALENDAR_CONFIG_PATH does not exist: ${localConfigPath}`,
+      );
+    }
+
     return appConfigSchema.parse(exampleConfig);
+  }
+
+  if (!statSync(localConfigPath).isFile()) {
+    throw new Error(`App config path is not a file: ${localConfigPath}`);
   }
 
   return appConfigSchema.parse(

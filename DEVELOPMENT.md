@@ -68,6 +68,8 @@ Important rules:
 - Do not commit real ICS URLs, signing secrets, mail credentials, or private instance config files
 - Checked-in config should keep using env-managed ICS URLs by variable name
 - `config/config.json` may inline a direct ICS `url` for private local development only
+- `HOUSE_CALENDAR_CONFIG_PATH` may point at a specific config file when you need
+  a deterministic app config for local tooling or tests
 - Viewer page passwords belong in env, not checked-in config
 - The current deployment model supports multiple houses in one app instance, so keep viewer access global unless the feature explicitly changes that model
 
@@ -156,6 +158,23 @@ Run lint only:
 
 ```bash
 bun run lint
+```
+
+Run browser integration tests for the viewer UI:
+
+```bash
+bun run test:integration
+```
+
+The Playwright config starts `bun dev` on the derived worktree app port and
+uses `config/config.example.json` so private local config does not change test
+coverage. By default it does not reuse an existing server on that port. If you
+know the existing server was started with the same deterministic config, set
+`PLAYWRIGHT_REUSE_EXISTING_SERVER=1` to opt into reuse. To run against an
+already-running app, pass `PLAYWRIGHT_BASE_URL`, for example:
+
+```bash
+PLAYWRIGHT_BASE_URL=http://127.0.0.1:5223 bun run test:integration
 ```
 
 Format the repo:
