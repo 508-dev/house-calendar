@@ -17,10 +17,47 @@ function listen(port: number): Promise<ReturnType<typeof createServer>> {
   });
 }
 
+async function reserveBasePortWithOccupiedOffset(
+  span: number,
+  targetOffset: number,
+): Promise<{ basePort: number; server: ReturnType<typeof createServer> }> {
+  const startPort = 49152;
+  const endPort = 65535 - span + 1;
+
+  for (let basePort = startPort; basePort <= endPort; basePort += 1) {
+    const occupiedPort = basePort + targetOffset;
+
+    try {
+      const server = await listen(occupiedPort);
+      return { basePort, server };
+    } catch {
+      continue;
+    }
+  }
+
+  throw new Error(
+    `Unable to reserve a test port for offset ${targetOffset} within a span of ${span}.`,
+  );
+}
+
+function findWorktreeRootWithOffset(span: number, targetOffset: number): string {
+  for (let attempt = 0; attempt < 10_000; attempt += 1) {
+    const worktreeRoot = join(
+      tmpdir(),
+      `house-calendar-test-offset-${span}-${targetOffset}-${attempt}`,
+    );
+    if (worktreePortOffset(worktreeRoot, span) === targetOffset) {
+      return worktreeRoot;
+    }
+  }
+
+  throw new Error(`Unable to find worktree root for offset ${targetOffset}.`);
+}
+
 describe("worktree ports", () => {
   test("encodes DATABASE_URL credentials safely", async () => {
     const bundle = await resolveWorktreePorts({
-      worktreeRoot: "/tmp/house-calendar/test-encoded-url",
+      worktreeRoot: join(tmpdir(), "house-calendar-test-encoded-url"),
       env: {
         NODE_ENV: "test",
         POSTGRES_DB: "house/calendar",
@@ -74,12 +111,14 @@ describe("worktree ports", () => {
   });
 
   test("probes forward when the hashed port is already occupied", async () => {
-    const worktreeRoot = "/tmp/house-calendar/test-port-collision";
+    const worktreeRoot = join(tmpdir(), "house-calendar-test-port-collision");
     const span = 5;
-    const basePort = 49152;
-    const offset = worktreePortOffset(worktreeRoot, span);
-    const occupiedPort = basePort + offset;
-    const server = await listen(occupiedPort);
+    const hashedOffset = worktreePortOffset(worktreeRoot, span);
+    const { basePort, server } = await reserveBasePortWithOccupiedOffset(
+      span,
+      hashedOffset,
+    );
+    const occupiedPort = basePort + hashedOffset;
 
     try {
       const bundle = await resolveWorktreePorts({
@@ -100,5 +139,97 @@ describe("worktree ports", () => {
         server.close(() => resolveClose()),
       );
     }
+  });
+
+  test("skips browser-blocked app ports when the hashed port lands on one", async () => {
+    const span = 4;
+    const worktreeRoot = findWorktreeRootWithOffset(span, 1);
+    const bundle = await resolveWorktreePorts({
+      worktreeRoot,
+      env: {
+        NODE_ENV: "test",
+        WORKTREE_DEV_BASE_PORT: "5059",
+        WORKTREE_POSTGRES_BASE_PORT: "49200",
+        WORKTREE_PORT_SPAN: String(span),
+      },
+    });
+
+    expect(bundle.app.port).toBeGreaterThanOrEqual(5059);
+    expect(bundle.app.port).toBeLessThan(5059 + span);
+    expect(bundle.app.port).not.toBe(5060);
+    expect(bundle.app.port).not.toBe(5061);
+  });
+
+  test("rejects explicit browser-blocked app ports", async () => {
+    expect.assertions(1);
+
+    try {
+      await resolveWorktreePorts({
+        worktreeRoot: join(tmpdir(), "house-calendar-test-explicit-blocked-port"),
+        env: {
+          NODE_ENV: "test",
+          WORKTREE_DEV_PORT: "5060",
+        },
+      });
+    } catch (error) {
+      expect((error as Error).message).toContain("blocked");
+    }
+  });
+
+  test("recomputes when a fallback app port is blocked", async () => {
+    const span = 4;
+    const worktreeRoot = findWorktreeRootWithOffset(span, 1);
+    const bundle = await resolveWorktreePorts({
+      worktreeRoot,
+      env: {
+        NODE_ENV: "test",
+        PORT: "5060",
+        WORKTREE_DEV_BASE_PORT: "5059",
+        WORKTREE_POSTGRES_BASE_PORT: "49200",
+        WORKTREE_PORT_SPAN: String(span),
+      },
+    });
+
+    expect(bundle.app.port).toBeGreaterThanOrEqual(5059);
+    expect(bundle.app.port).toBeLessThan(5059 + span);
+    expect(bundle.app.port).not.toBe(5060);
+    expect(bundle.app.port).not.toBe(5061);
+  });
+
+  test("reports when the entire app port range is browser-blocked", async () => {
+    expect.assertions(3);
+
+    try {
+      await resolveWorktreePorts({
+        worktreeRoot: join(tmpdir(), "house-calendar-test-all-blocked-range"),
+        env: {
+          NODE_ENV: "test",
+          WORKTREE_DEV_BASE_PORT: "5060",
+          WORKTREE_POSTGRES_BASE_PORT: "49200",
+          WORKTREE_PORT_SPAN: "2",
+        },
+      });
+    } catch (error) {
+      const message = (error as Error).message;
+      expect(message).toContain("every candidate is blocked");
+      expect(message).toContain("WORKTREE_DEV_BASE_PORT");
+      expect(message).toContain("WORKTREE_PORT_SPAN");
+    }
+  });
+
+  test("ignores invalid fallback app ports when a primary explicit port is set", async () => {
+    const bundle = await resolveWorktreePorts({
+      worktreeRoot: join(
+        tmpdir(),
+        "house-calendar-test-primary-explicit-port-wins",
+      ),
+      env: {
+        NODE_ENV: "test",
+        PORT: "not-a-port",
+        WORKTREE_DEV_PORT: "5059",
+      },
+    });
+
+    expect(bundle.app.port).toBe(5059);
   });
 });

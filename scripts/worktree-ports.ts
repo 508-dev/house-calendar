@@ -14,6 +14,14 @@ export const WORKTREE_PORT_OFFSET_ENV = "WORKTREE_PORT_OFFSET";
 export const WORKTREE_PORT_SPAN_ENV = "WORKTREE_PORT_SPAN";
 
 const MAX_PORT = 65535;
+const CHROME_BLOCKED_WEB_PORTS = new Set([
+  1, 7, 9, 11, 13, 15, 17, 19, 20, 21, 22, 23, 25, 37, 42, 43, 53, 69, 77,
+  79, 87, 95, 101, 102, 103, 104, 109, 110, 111, 113, 115, 117, 119, 123,
+  135, 137, 139, 143, 161, 179, 389, 427, 465, 512, 513, 514, 515, 526, 530,
+  531, 532, 540, 548, 554, 556, 563, 587, 601, 636, 989, 990, 993, 995, 1719,
+  1720, 1723, 2049, 3659, 4045, 5060, 5061, 6000, 6566, 6665, 6666, 6667,
+  6668, 6669, 6697, 10080,
+]);
 
 type PortResolution = {
   basePort: number;
@@ -91,6 +99,7 @@ function resolvePort({
   basePort,
   basePortEnvName,
   defaultBasePort,
+  disallowedPorts,
   env,
   explicitPortEnvName,
   fallbackPortEnvName,
@@ -101,6 +110,7 @@ function resolvePort({
   basePort?: number;
   basePortEnvName: string;
   defaultBasePort: number;
+  disallowedPorts?: ReadonlySet<number>;
   env: NodeJS.ProcessEnv;
   explicitPortEnvName: string;
   fallbackPortEnvName?: string;
@@ -108,14 +118,57 @@ function resolvePort({
   span: number;
   worktreeRoot: string;
 }): Omit<PortResolution, "port"> & { port?: number } {
-  const explicitPort =
-    parsePortLike(env[explicitPortEnvName], explicitPortEnvName) ??
-    parsePortLike(
-      fallbackPortEnvName ? env[fallbackPortEnvName] : undefined,
-      fallbackPortEnvName ?? explicitPortEnvName,
-    );
+  const primaryExplicitPortValue = env[explicitPortEnvName];
+  const primaryExplicitPort = parsePortLike(
+    primaryExplicitPortValue,
+    explicitPortEnvName,
+  );
+  const fallbackExplicitPort =
+    primaryExplicitPortValue === undefined || primaryExplicitPortValue === ""
+      ? parsePortLike(
+          fallbackPortEnvName ? env[fallbackPortEnvName] : undefined,
+          fallbackPortEnvName ?? explicitPortEnvName,
+        )
+      : undefined;
+  const shouldIgnoreBlockedFallbackExplicitPort =
+    primaryExplicitPort === undefined &&
+    fallbackExplicitPort !== undefined &&
+    disallowedPorts?.has(fallbackExplicitPort);
+  const explicitPort = primaryExplicitPort ?? fallbackExplicitPort;
+  const explicitPortSource =
+    primaryExplicitPort !== undefined
+      ? explicitPortEnvName
+      : fallbackExplicitPort !== undefined
+        ? fallbackPortEnvName ?? explicitPortEnvName
+        : explicitPortEnvName;
+  const resolvedBasePort =
+    basePort ??
+    parsePortLike(env[basePortEnvName], basePortEnvName) ??
+    defaultBasePort;
 
   if (explicitPort !== undefined) {
+    if (shouldIgnoreBlockedFallbackExplicitPort) {
+      if (resolvedBasePort + span - 1 > MAX_PORT) {
+        throw new Error(
+          `${basePortEnvName} + ${WORKTREE_PORT_SPAN_ENV} - 1 must not exceed ${MAX_PORT}.`,
+        );
+      }
+
+      return {
+        basePort: resolvedBasePort,
+        offset: worktreePortOffset(worktreeRoot, span),
+        pathKey,
+        span,
+        usingExplicitPort: false,
+      };
+    }
+
+    if (disallowedPorts?.has(explicitPort)) {
+      throw new Error(
+        `${explicitPortSource} resolves to ${explicitPort}, which is blocked for browser-accessible app ports.`,
+      );
+    }
+
     return {
       basePort: defaultBasePort,
       offset: worktreePortOffset(worktreeRoot, span),
@@ -125,11 +178,6 @@ function resolvePort({
       usingExplicitPort: true,
     };
   }
-
-  const resolvedBasePort =
-    basePort ??
-    parsePortLike(env[basePortEnvName], basePortEnvName) ??
-    defaultBasePort;
 
   if (resolvedBasePort + span - 1 > MAX_PORT) {
     throw new Error(
@@ -184,6 +232,7 @@ async function isPortAvailable(port: number): Promise<boolean> {
 
 async function resolveAvailablePort(
   resolution: Omit<PortResolution, "port"> & { port?: number },
+  disallowedPorts?: ReadonlySet<number>,
 ): Promise<PortResolution> {
   if (resolution.usingExplicitPort) {
     return {
@@ -192,9 +241,16 @@ async function resolveAvailablePort(
     };
   }
 
+  let skippedDisallowedPortCount = 0;
+
   for (let attempt = 0; attempt < resolution.span; attempt += 1) {
     const offset = (resolution.offset + attempt) % resolution.span;
     const port = resolution.basePort + offset;
+
+    if (disallowedPorts?.has(port)) {
+      skippedDisallowedPortCount += 1;
+      continue;
+    }
 
     if (await isPortAvailable(port)) {
       return {
@@ -203,6 +259,15 @@ async function resolveAvailablePort(
         port,
       };
     }
+  }
+
+  if (
+    disallowedPorts !== undefined &&
+    skippedDisallowedPortCount === resolution.span
+  ) {
+    throw new Error(
+      `No available port found from ${resolution.basePort} to ${resolution.basePort + resolution.span - 1} because every candidate is blocked for browser-accessible app ports. Adjust ${WORKTREE_DEV_BASE_PORT_ENV} or ${WORKTREE_PORT_SPAN_ENV}.`,
+    );
   }
 
   throw new Error(
@@ -241,6 +306,7 @@ export async function resolveWorktreePorts({
       resolvePort({
         basePortEnvName: WORKTREE_DEV_BASE_PORT_ENV,
         defaultBasePort: DEFAULT_WORKTREE_DEV_BASE_PORT,
+        disallowedPorts: CHROME_BLOCKED_WEB_PORTS,
         env,
         explicitPortEnvName: WORKTREE_DEV_PORT_ENV,
         fallbackPortEnvName: "PORT",
@@ -248,6 +314,7 @@ export async function resolveWorktreePorts({
         span,
         worktreeRoot,
       }),
+      CHROME_BLOCKED_WEB_PORTS,
     ),
     resolveAvailablePort(
       resolvePort({

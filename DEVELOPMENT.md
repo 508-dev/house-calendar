@@ -11,7 +11,7 @@ If you want the product overview, start with [README.md](./README.md). If you wa
 - The app runs on the host with Bun, Vite, and TanStack Start
 - Postgres runs in Docker Compose for local development
 - Drizzle is the ORM and typed query layer for Postgres
-- Per-worktree ports are derived by `scripts/worktree-ports.ts`
+- Per-worktree ports are derived by `scripts/worktree-ports.ts`, and app ports skip browser-blocked ports such as `5060` and `5061`
 - `bun dev` writes `.env` for the current worktree and starts Vite on the derived port
 
 ## Prerequisites
