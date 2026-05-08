@@ -19,7 +19,10 @@ function listen(port: number): Promise<ReturnType<typeof createServer>> {
 
 function findWorktreeRootWithOffset(span: number, targetOffset: number): string {
   for (let attempt = 0; attempt < 10_000; attempt += 1) {
-    const worktreeRoot = `/tmp/house-calendar/test-offset-${span}-${targetOffset}-${attempt}`;
+    const worktreeRoot = join(
+      tmpdir(),
+      `house-calendar-test-offset-${span}-${targetOffset}-${attempt}`,
+    );
     if (worktreePortOffset(worktreeRoot, span) === targetOffset) {
       return worktreeRoot;
     }
@@ -31,7 +34,7 @@ function findWorktreeRootWithOffset(span: number, targetOffset: number): string 
 describe("worktree ports", () => {
   test("encodes DATABASE_URL credentials safely", async () => {
     const bundle = await resolveWorktreePorts({
-      worktreeRoot: "/tmp/house-calendar/test-encoded-url",
+      worktreeRoot: join(tmpdir(), "house-calendar-test-encoded-url"),
       env: {
         NODE_ENV: "test",
         POSTGRES_DB: "house/calendar",
@@ -85,7 +88,7 @@ describe("worktree ports", () => {
   });
 
   test("probes forward when the hashed port is already occupied", async () => {
-    const worktreeRoot = "/tmp/house-calendar/test-port-collision";
+    const worktreeRoot = join(tmpdir(), "house-calendar-test-port-collision");
     const span = 5;
     const basePort = 49152;
     const offset = worktreePortOffset(worktreeRoot, span);
@@ -137,7 +140,7 @@ describe("worktree ports", () => {
 
     try {
       await resolveWorktreePorts({
-        worktreeRoot: "/tmp/house-calendar/test-explicit-blocked-port",
+        worktreeRoot: join(tmpdir(), "house-calendar-test-explicit-blocked-port"),
         env: {
           NODE_ENV: "test",
           PORT: "5060",
@@ -150,7 +153,10 @@ describe("worktree ports", () => {
 
   test("ignores invalid fallback app ports when a primary explicit port is set", async () => {
     const bundle = await resolveWorktreePorts({
-      worktreeRoot: "/tmp/house-calendar/test-primary-explicit-port-wins",
+      worktreeRoot: join(
+        tmpdir(),
+        "house-calendar-test-primary-explicit-port-wins",
+      ),
       env: {
         NODE_ENV: "test",
         PORT: "not-a-port",
