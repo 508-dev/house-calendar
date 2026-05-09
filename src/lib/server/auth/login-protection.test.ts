@@ -63,6 +63,25 @@ describe("hasRecentThresholdCrossing", () => {
       }),
     ).toBe(false);
   });
+
+  test("supports daily windows that cross before the current 24-hour range", () => {
+    const minute = 60 * 1000;
+    const nowMs = 48 * 60 * minute;
+    const oldFailures = Array.from(
+      { length: 119 },
+      (_, index) => nowMs - (24 * 60 + 30 - index * 0.1) * minute,
+    );
+
+    expect(
+      hasRecentThresholdCrossing({
+        limit: 120,
+        lockoutMs: 60 * minute,
+        nowMs,
+        timestampsMs: [...oldFailures, nowMs - 30 * minute],
+        windowMs: 24 * 60 * minute,
+      }),
+    ).toBe(true);
+  });
 });
 
 describe("getLoginProtectionDecision", () => {

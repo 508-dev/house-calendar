@@ -300,7 +300,10 @@ function buildAttemptKeys(
 async function cleanupOldAttempts(
   config: LoginProtectionConfig,
 ): Promise<void> {
-  const retentionMs = Math.max(ONE_DAY_MS, config.windowMs + config.lockoutMs);
+  const retentionMs = Math.max(
+    ONE_DAY_MS + config.lockoutMs,
+    config.windowMs + config.lockoutMs,
+  );
   await getDb()
     .delete(adminLoginAttempts)
     .where(
@@ -354,7 +357,11 @@ async function getFailureCounts(
   const windowStartMs = nowMs - config.windowMs;
   const dailyStartMs = nowMs - ONE_DAY_MS;
   const scanStart = new Date(
-    nowMs - Math.max(ONE_DAY_MS, config.windowMs + config.lockoutMs),
+    nowMs -
+      Math.max(
+        ONE_DAY_MS + config.lockoutMs,
+        config.windowMs + config.lockoutMs,
+      ),
   );
   const recentUnlockedAttempt = and(
     gt(adminLoginAttempts.occurredAt, scanStart),
