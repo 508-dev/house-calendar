@@ -560,7 +560,11 @@ export async function loginAdmin(input: {
       reason: "invalid_credentials",
     });
     await delayAfterFailedAdminLogin(input.adminSecurity);
-    return { error: "Email or password is incorrect.", ok: false };
+    return {
+      challengeRequired: protection.challengeRequired,
+      error: "Email or password is incorrect.",
+      ok: false,
+    };
   }
 
   await clearAdminLoginFailures({

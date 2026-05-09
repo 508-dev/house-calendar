@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, count, eq, gt, lte, or, type SQL } from "drizzle-orm";
+import { and, eq, gt, lte, ne, or, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import type { AdminSecurityConfig } from "@/lib/config/config";
 import { getDb, getSql } from "../db";
@@ -53,6 +53,7 @@ export type AdminLoginChallengeUiConfig =
 
 export type AdminLoginProtectionCheck =
   | {
+      challengeRequired: boolean;
       keys: LoginAttemptKeys;
       ok: true;
     }
@@ -62,6 +63,43 @@ export type AdminLoginProtectionCheck =
       keys: LoginAttemptKeys;
       ok: false;
     };
+
+export function hasRecentThresholdCrossing({
+  limit,
+  lockoutMs,
+  nowMs,
+  timestampsMs,
+  windowMs,
+}: {
+  limit: number;
+  lockoutMs: number;
+  nowMs: number;
+  timestampsMs: number[];
+  windowMs: number;
+}): boolean {
+  if (limit <= 0) {
+    return false;
+  }
+
+  const sorted = [...timestampsMs].sort((left, right) => left - right);
+  const lockoutStartMs = nowMs - lockoutMs;
+
+  for (let index = limit - 1; index < sorted.length; index += 1) {
+    const thresholdCrossedAtMs = sorted[index];
+
+    if (thresholdCrossedAtMs <= lockoutStartMs) {
+      continue;
+    }
+
+    const windowStartedAtMs = sorted[index - limit + 1];
+
+    if (thresholdCrossedAtMs - windowStartedAtMs <= windowMs) {
+      return true;
+    }
+  }
+
+  return false;
+}
 
 function getLoginProtectionConfig(
   adminSecurity: AdminSecurityConfig,
@@ -214,67 +252,98 @@ async function cleanupOldAttempts(
     );
 }
 
-async function countFailures(where: SQL | undefined): Promise<number> {
+async function getFailureTimestamps(where: SQL | undefined): Promise<number[]> {
   if (!where) {
-    return 0;
+    return [];
   }
 
-  const [row] = await getDb()
-    .select({ value: count() })
+  const rows = await getDb()
+    .select({ occurredAt: adminLoginAttempts.occurredAt })
     .from(adminLoginAttempts)
     .where(where);
 
-  return row?.value ?? 0;
+  return rows.map((row) => row.occurredAt.getTime());
+}
+
+function countAttemptsSince(timestampsMs: number[], sinceMs: number): number {
+  return timestampsMs.filter((timestampMs) => timestampMs > sinceMs).length;
 }
 
 async function getFailureCounts(
   keys: LoginAttemptKeys,
   config: LoginProtectionConfig,
 ) {
-  const windowStart = new Date(Date.now() - config.windowMs);
-  const dailyStart = new Date(Date.now() - ONE_DAY_MS);
+  const nowMs = Date.now();
+  const windowStartMs = nowMs - config.windowMs;
+  const dailyStartMs = nowMs - ONE_DAY_MS;
+  const scanStart = new Date(
+    nowMs - Math.max(ONE_DAY_MS, config.windowMs + config.lockoutMs),
+  );
+  const recentUnlockedAttempt = and(
+    gt(adminLoginAttempts.occurredAt, scanStart),
+    ne(adminLoginAttempts.reason, "locked"),
+  );
 
-  const [emailFailures, emailIpFailures, ipFailures, ipDailyFailures] =
-    await Promise.all([
-      countFailures(
-        keys.emailHash
-          ? and(
-              eq(adminLoginAttempts.emailHash, keys.emailHash),
-              gt(adminLoginAttempts.occurredAt, windowStart),
-            )
-          : undefined,
-      ),
-      countFailures(
-        keys.emailIpHash
-          ? and(
-              eq(adminLoginAttempts.emailIpHash, keys.emailIpHash),
-              gt(adminLoginAttempts.occurredAt, windowStart),
-            )
-          : undefined,
-      ),
-      countFailures(
-        keys.clientIpHash
-          ? and(
-              eq(adminLoginAttempts.clientIpHash, keys.clientIpHash),
-              gt(adminLoginAttempts.occurredAt, windowStart),
-            )
-          : undefined,
-      ),
-      countFailures(
-        keys.clientIpHash
-          ? and(
-              eq(adminLoginAttempts.clientIpHash, keys.clientIpHash),
-              gt(adminLoginAttempts.occurredAt, dailyStart),
-            )
-          : undefined,
-      ),
-    ]);
+  const [emailTimestamps, emailIpTimestamps, ipTimestamps] = await Promise.all([
+    getFailureTimestamps(
+      keys.emailHash
+        ? and(
+            eq(adminLoginAttempts.emailHash, keys.emailHash),
+            recentUnlockedAttempt,
+          )
+        : undefined,
+    ),
+    getFailureTimestamps(
+      keys.emailIpHash
+        ? and(
+            eq(adminLoginAttempts.emailIpHash, keys.emailIpHash),
+            recentUnlockedAttempt,
+          )
+        : undefined,
+    ),
+    getFailureTimestamps(
+      keys.clientIpHash
+        ? and(
+            eq(adminLoginAttempts.clientIpHash, keys.clientIpHash),
+            recentUnlockedAttempt,
+          )
+        : undefined,
+    ),
+  ]);
 
   return {
-    emailFailures,
-    emailIpFailures,
-    ipDailyFailures,
-    ipFailures,
+    emailFailures: countAttemptsSince(emailTimestamps, windowStartMs),
+    emailIpFailures: countAttemptsSince(emailIpTimestamps, windowStartMs),
+    emailIpLockedOut: hasRecentThresholdCrossing({
+      limit: config.emailIpFailureLimit,
+      lockoutMs: config.lockoutMs,
+      nowMs,
+      timestampsMs: emailIpTimestamps,
+      windowMs: config.windowMs,
+    }),
+    emailLockedOut: hasRecentThresholdCrossing({
+      limit: config.emailFailureLimit,
+      lockoutMs: config.lockoutMs,
+      nowMs,
+      timestampsMs: emailTimestamps,
+      windowMs: config.windowMs,
+    }),
+    ipDailyFailures: countAttemptsSince(ipTimestamps, dailyStartMs),
+    ipDailyLockedOut: hasRecentThresholdCrossing({
+      limit: config.ipDailyFailureLimit,
+      lockoutMs: config.lockoutMs,
+      nowMs,
+      timestampsMs: ipTimestamps,
+      windowMs: ONE_DAY_MS,
+    }),
+    ipFailures: countAttemptsSince(ipTimestamps, windowStartMs),
+    ipLockedOut: hasRecentThresholdCrossing({
+      limit: config.ipFailureLimit,
+      lockoutMs: config.lockoutMs,
+      nowMs,
+      timestampsMs: ipTimestamps,
+      windowMs: config.windowMs,
+    }),
   };
 }
 
@@ -350,7 +419,7 @@ export async function checkAdminLoginProtection({
   const keys = buildAttemptKeys(email, request);
 
   if (!serverEnv.DATABASE_URL) {
-    return { keys, ok: true };
+    return { challengeRequired: false, keys, ok: true };
   }
 
   const config = getLoginProtectionConfig(adminSecurity);
@@ -369,10 +438,10 @@ export async function checkAdminLoginProtection({
 
   const lockedOut =
     config.throttleEnabled &&
-    (failures.emailFailures >= config.emailFailureLimit ||
-      failures.emailIpFailures >= config.emailIpFailureLimit ||
-      failures.ipFailures >= config.ipFailureLimit ||
-      failures.ipDailyFailures >= config.ipDailyFailureLimit);
+    (failures.emailLockedOut ||
+      failures.emailIpLockedOut ||
+      failures.ipLockedOut ||
+      failures.ipDailyLockedOut);
 
   if (lockedOut) {
     return {
@@ -399,7 +468,7 @@ export async function checkAdminLoginProtection({
     }
   }
 
-  return { keys, ok: true };
+  return { challengeRequired, keys, ok: true };
 }
 
 export async function recordAdminLoginFailure({
