@@ -7,6 +7,7 @@ import { adminLoginAttempts } from "../db-schema";
 import { serverEnv } from "../env";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const CLEANUP_INTERVAL_MS = 60 * 1000;
 const TURNSTILE_SITEVERIFY_URL =
   "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 
@@ -16,6 +17,8 @@ const turnstileVerifyResponseSchema = z.object({
 });
 
 let schemaReadyPromise: Promise<void> | undefined;
+let lastCleanupStartedAtMs = 0;
+let cleanupPromise: Promise<void> | undefined;
 
 type LoginProtectionConfig = {
   challengeAfterFailures: number;
@@ -37,6 +40,17 @@ type LoginAttemptKeys = {
   clientIpHash?: string;
   emailHash?: string;
   emailIpHash?: string;
+};
+
+type LoginFailureCounts = {
+  emailFailures: number;
+  emailIpFailures: number;
+  emailIpLockedOut: boolean;
+  emailLockedOut: boolean;
+  ipDailyFailures: number;
+  ipDailyLockedOut: boolean;
+  ipFailures: number;
+  ipLockedOut: boolean;
 };
 
 export type AdminLoginChallengeUiConfig =
@@ -99,6 +113,48 @@ export function hasRecentThresholdCrossing({
   }
 
   return false;
+}
+
+export function getLoginProtectionDecision({
+  challengeAfterFailures,
+  challengeMode,
+  failures,
+  throttleEnabled,
+}: {
+  challengeAfterFailures: number;
+  challengeMode: "off" | "always" | "after_failures";
+  failures: LoginFailureCounts;
+  throttleEnabled: boolean;
+}): { challengeRequired: boolean; lockedOut: boolean } {
+  const challengeRequired =
+    challengeMode === "always" ||
+    (challengeMode === "after_failures" &&
+      Math.max(
+        failures.emailFailures,
+        failures.emailIpFailures,
+        failures.ipFailures,
+      ) >= challengeAfterFailures);
+
+  const lockedOut =
+    throttleEnabled &&
+    (failures.emailLockedOut ||
+      failures.emailIpLockedOut ||
+      failures.ipLockedOut ||
+      failures.ipDailyLockedOut);
+
+  return {
+    challengeRequired,
+    lockedOut,
+  };
+}
+
+export function isAdminLoginProtectionFullyDisabled(
+  adminSecurity: AdminSecurityConfig,
+): boolean {
+  return (
+    !adminSecurity.loginThrottle.enabled &&
+    adminSecurity.loginChallenge.mode === "off"
+  );
 }
 
 function getLoginProtectionConfig(
@@ -250,6 +306,27 @@ async function cleanupOldAttempts(
     .where(
       lte(adminLoginAttempts.occurredAt, new Date(Date.now() - retentionMs)),
     );
+}
+
+async function maybeCleanupOldAttempts(
+  config: LoginProtectionConfig,
+): Promise<void> {
+  const nowMs = Date.now();
+
+  if (cleanupPromise) {
+    return cleanupPromise;
+  }
+
+  if (nowMs - lastCleanupStartedAtMs < CLEANUP_INTERVAL_MS) {
+    return;
+  }
+
+  lastCleanupStartedAtMs = nowMs;
+  cleanupPromise = cleanupOldAttempts(config).finally(() => {
+    cleanupPromise = undefined;
+  });
+
+  return cleanupPromise;
 }
 
 async function getFailureTimestamps(where: SQL | undefined): Promise<number[]> {
@@ -418,30 +495,24 @@ export async function checkAdminLoginProtection({
 }): Promise<AdminLoginProtectionCheck> {
   const keys = buildAttemptKeys(email, request);
 
-  if (!serverEnv.DATABASE_URL) {
+  if (
+    !serverEnv.DATABASE_URL ||
+    isAdminLoginProtectionFullyDisabled(adminSecurity)
+  ) {
     return { challengeRequired: false, keys, ok: true };
   }
 
   const config = getLoginProtectionConfig(adminSecurity);
   await ensureLoginProtectionSchema();
-  await cleanupOldAttempts(config);
+  await maybeCleanupOldAttempts(config);
 
   const failures = await getFailureCounts(keys, config);
-  const challengeRequired =
-    config.challengeMode === "always" ||
-    (config.challengeMode === "after_failures" &&
-      Math.max(
-        failures.emailFailures,
-        failures.emailIpFailures,
-        failures.ipFailures,
-      ) >= config.challengeAfterFailures);
-
-  const lockedOut =
-    config.throttleEnabled &&
-    (failures.emailLockedOut ||
-      failures.emailIpLockedOut ||
-      failures.ipLockedOut ||
-      failures.ipDailyLockedOut);
+  const { challengeRequired, lockedOut } = getLoginProtectionDecision({
+    challengeAfterFailures: config.challengeAfterFailures,
+    challengeMode: config.challengeMode,
+    failures,
+    throttleEnabled: config.throttleEnabled,
+  });
 
   if (lockedOut) {
     return {

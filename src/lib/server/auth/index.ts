@@ -15,6 +15,7 @@ import {
   checkAdminLoginProtection,
   clearAdminLoginFailures,
   delayAfterFailedAdminLogin,
+  isAdminLoginProtectionFullyDisabled,
   recordAdminLoginFailure,
 } from "./login-protection";
 import { hashPassword, verifyPassword } from "./password";
@@ -22,9 +23,6 @@ import { hashPassword, verifyPassword } from "./password";
 const ADMIN_SESSION_COOKIE = "house_calendar_admin_session";
 const ADMIN_SESSION_DURATION_DAYS = 30;
 const ADMIN_PASSWORD_MIN_LENGTH = 10;
-const DUMMY_PASSWORD_HASH = hashPassword(
-  "house-calendar dummy password for login timing",
-);
 const DEV_BOOTSTRAP_DISABLED_MESSAGE =
   "Development admin bootstrap is disabled in production.";
 
@@ -97,6 +95,7 @@ type AuthDb = ReturnType<typeof getDb>;
 type AuthDbWriter = Pick<AuthDb, "insert">;
 
 let schemaReadyPromise: Promise<void> | undefined;
+let dummyPasswordHash: string | undefined;
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -104,6 +103,14 @@ function normalizeEmail(email: string): string {
 
 function hashSessionToken(token: string): string {
   return createHash("sha256").update(token).digest("base64url");
+}
+
+function getDummyPasswordHash(): string {
+  dummyPasswordHash ??= hashPassword(
+    "house-calendar dummy password for login timing",
+  );
+
+  return dummyPasswordHash;
 }
 
 function getErrorCode(error: unknown): string | undefined {
@@ -503,14 +510,20 @@ export async function loginAdmin(input: {
   }
 
   const parsed = loginInputSchema.safeParse(input);
+  const protectionFullyDisabled = isAdminLoginProtectionFullyDisabled(
+    input.adminSecurity,
+  );
 
   if (!parsed.success) {
-    await recordAdminLoginFailure({
-      email: input.email,
-      reason: "invalid_input",
-      request: input.request,
-    });
-    await delayAfterFailedAdminLogin(input.adminSecurity);
+    if (!protectionFullyDisabled) {
+      await recordAdminLoginFailure({
+        email: input.email,
+        reason: "invalid_input",
+        request: input.request,
+      });
+      await delayAfterFailedAdminLogin(input.adminSecurity);
+    }
+
     return { error: "Enter a valid admin email and password.", ok: false };
   }
 
@@ -550,16 +563,19 @@ export async function loginAdmin(input: {
 
   const passwordMatches = verifyPassword(
     parsed.data.password,
-    user?.passwordHash ?? DUMMY_PASSWORD_HASH,
+    user?.passwordHash ?? getDummyPasswordHash(),
   );
 
   if (!user || !passwordMatches) {
-    await recordAdminLoginFailure({
-      email,
-      keys: protection.keys,
-      reason: "invalid_credentials",
-    });
-    await delayAfterFailedAdminLogin(input.adminSecurity);
+    if (!protectionFullyDisabled) {
+      await recordAdminLoginFailure({
+        email,
+        keys: protection.keys,
+        reason: "invalid_credentials",
+      });
+      await delayAfterFailedAdminLogin(input.adminSecurity);
+    }
+
     return {
       challengeRequired: protection.challengeRequired,
       error: "Email or password is incorrect.",
@@ -567,10 +583,12 @@ export async function loginAdmin(input: {
     };
   }
 
-  await clearAdminLoginFailures({
-    email,
-    keys: protection.keys,
-  });
+  if (!protectionFullyDisabled) {
+    await clearAdminLoginFailures({
+      email,
+      keys: protection.keys,
+    });
+  }
 
   return {
     ok: true,
