@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, eq, gt, lte, ne, or, type SQL } from "drizzle-orm";
+import { and, count, eq, gt, lte, ne, or, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import type { AdminSecurityConfig } from "@/lib/config/config";
 import { getDb, getSql } from "../db";
@@ -68,6 +68,7 @@ export type AdminLoginChallengeUiConfig =
 export type AdminLoginProtectionCheck =
   | {
       challengeRequired: boolean;
+      challengeRequiredAfterFailure: boolean;
       keys: LoginAttemptKeys;
       ok: true;
     }
@@ -125,15 +126,24 @@ export function getLoginProtectionDecision({
   challengeMode: "off" | "always" | "after_failures";
   failures: LoginFailureCounts;
   throttleEnabled: boolean;
-}): { challengeRequired: boolean; lockedOut: boolean } {
+}): {
+  challengeRequired: boolean;
+  challengeRequiredAfterFailure: boolean;
+  lockedOut: boolean;
+} {
+  const maxCurrentFailures = Math.max(
+    failures.emailFailures,
+    failures.emailIpFailures,
+    failures.ipFailures,
+  );
   const challengeRequired =
     challengeMode === "always" ||
     (challengeMode === "after_failures" &&
-      Math.max(
-        failures.emailFailures,
-        failures.emailIpFailures,
-        failures.ipFailures,
-      ) >= challengeAfterFailures);
+      maxCurrentFailures >= challengeAfterFailures);
+  const challengeRequiredAfterFailure =
+    challengeMode === "always" ||
+    (challengeMode === "after_failures" &&
+      maxCurrentFailures + 1 >= challengeAfterFailures);
 
   const lockedOut =
     throttleEnabled &&
@@ -144,6 +154,7 @@ export function getLoginProtectionDecision({
 
   return {
     challengeRequired,
+    challengeRequiredAfterFailure,
     lockedOut,
   };
 }
@@ -166,7 +177,7 @@ function getLoginProtectionConfig(
     emailFailureLimit: adminSecurity.loginThrottle.maxEmailFailures,
     emailIpFailureLimit: adminSecurity.loginThrottle.maxEmailIpFailures,
     failureDelayMs:
-      process.env.NODE_ENV === "test"
+      process.env.NODE_ENV === "test" || !adminSecurity.loginThrottle.enabled
         ? 0
         : adminSecurity.loginThrottle.failureDelayMs,
     ipDailyFailureLimit: adminSecurity.loginThrottle.maxIpDailyFailures,
@@ -332,21 +343,106 @@ async function maybeCleanupOldAttempts(
   return cleanupPromise;
 }
 
-async function getFailureTimestamps(where: SQL | undefined): Promise<number[]> {
+async function countFailures(where: SQL | undefined): Promise<number> {
   if (!where) {
-    return [];
+    return 0;
   }
 
-  const rows = await getDb()
-    .select({ occurredAt: adminLoginAttempts.occurredAt })
+  const [row] = await getDb()
+    .select({ value: count() })
     .from(adminLoginAttempts)
     .where(where);
 
-  return rows.map((row) => row.occurredAt.getTime());
+  return row?.value ?? 0;
 }
 
-function countAttemptsSince(timestampsMs: number[], sinceMs: number): number {
-  return timestampsMs.filter((timestampMs) => timestampMs > sinceMs).length;
+type LoginAttemptKeyColumn = "clientIpHash" | "emailHash" | "emailIpHash";
+
+async function hasRecentThresholdCrossingInDb({
+  keyColumn,
+  keyHash,
+  limit,
+  lockoutMs,
+  nowMs,
+  windowMs,
+}: {
+  keyColumn: LoginAttemptKeyColumn;
+  keyHash: string | undefined;
+  limit: number;
+  lockoutMs: number;
+  nowMs: number;
+  windowMs: number;
+}): Promise<boolean> {
+  if (!keyHash || limit <= 0) {
+    return false;
+  }
+
+  const sql = getSql();
+  const lockoutStart = new Date(nowMs - lockoutMs);
+
+  if (keyColumn === "emailHash") {
+    const [row] = await sql<{ value: boolean }[]>`
+      select exists (
+        select 1
+        from admin_login_attempts candidate
+        where candidate.email_hash = ${keyHash}
+          and candidate.reason <> 'locked'
+          and candidate.occurred_at > ${lockoutStart}
+          and (
+            select count(*)
+            from admin_login_attempts attempt
+            where attempt.email_hash = ${keyHash}
+              and attempt.reason <> 'locked'
+              and attempt.occurred_at > candidate.occurred_at - (${windowMs} * interval '1 millisecond')
+              and attempt.occurred_at <= candidate.occurred_at
+          ) >= ${limit}
+      ) as value
+    `;
+
+    return row?.value ?? false;
+  }
+
+  if (keyColumn === "emailIpHash") {
+    const [row] = await sql<{ value: boolean }[]>`
+      select exists (
+        select 1
+        from admin_login_attempts candidate
+        where candidate.email_ip_hash = ${keyHash}
+          and candidate.reason <> 'locked'
+          and candidate.occurred_at > ${lockoutStart}
+          and (
+            select count(*)
+            from admin_login_attempts attempt
+            where attempt.email_ip_hash = ${keyHash}
+              and attempt.reason <> 'locked'
+              and attempt.occurred_at > candidate.occurred_at - (${windowMs} * interval '1 millisecond')
+              and attempt.occurred_at <= candidate.occurred_at
+          ) >= ${limit}
+      ) as value
+    `;
+
+    return row?.value ?? false;
+  }
+
+  const [row] = await sql<{ value: boolean }[]>`
+    select exists (
+      select 1
+      from admin_login_attempts candidate
+      where candidate.client_ip_hash = ${keyHash}
+        and candidate.reason <> 'locked'
+        and candidate.occurred_at > ${lockoutStart}
+        and (
+          select count(*)
+          from admin_login_attempts attempt
+          where attempt.client_ip_hash = ${keyHash}
+            and attempt.reason <> 'locked'
+            and attempt.occurred_at > candidate.occurred_at - (${windowMs} * interval '1 millisecond')
+            and attempt.occurred_at <= candidate.occurred_at
+        ) >= ${limit}
+    ) as value
+  `;
+
+  return row?.value ?? false;
 }
 
 async function getFailureCounts(
@@ -368,66 +464,95 @@ async function getFailureCounts(
     ne(adminLoginAttempts.reason, "locked"),
   );
 
-  const [emailTimestamps, emailIpTimestamps, ipTimestamps] = await Promise.all([
-    getFailureTimestamps(
+  const [
+    emailFailures,
+    emailIpFailures,
+    ipFailures,
+    ipDailyFailures,
+    emailLockedOut,
+    emailIpLockedOut,
+    ipLockedOut,
+    ipDailyLockedOut,
+  ] = await Promise.all([
+    countFailures(
       keys.emailHash
         ? and(
             eq(adminLoginAttempts.emailHash, keys.emailHash),
+            gt(adminLoginAttempts.occurredAt, new Date(windowStartMs)),
             recentUnlockedAttempt,
           )
         : undefined,
     ),
-    getFailureTimestamps(
+    countFailures(
       keys.emailIpHash
         ? and(
             eq(adminLoginAttempts.emailIpHash, keys.emailIpHash),
+            gt(adminLoginAttempts.occurredAt, new Date(windowStartMs)),
             recentUnlockedAttempt,
           )
         : undefined,
     ),
-    getFailureTimestamps(
+    countFailures(
       keys.clientIpHash
         ? and(
             eq(adminLoginAttempts.clientIpHash, keys.clientIpHash),
+            gt(adminLoginAttempts.occurredAt, new Date(windowStartMs)),
             recentUnlockedAttempt,
           )
         : undefined,
     ),
-  ]);
-
-  return {
-    emailFailures: countAttemptsSince(emailTimestamps, windowStartMs),
-    emailIpFailures: countAttemptsSince(emailIpTimestamps, windowStartMs),
-    emailIpLockedOut: hasRecentThresholdCrossing({
-      limit: config.emailIpFailureLimit,
-      lockoutMs: config.lockoutMs,
-      nowMs,
-      timestampsMs: emailIpTimestamps,
-      windowMs: config.windowMs,
-    }),
-    emailLockedOut: hasRecentThresholdCrossing({
+    countFailures(
+      keys.clientIpHash
+        ? and(
+            eq(adminLoginAttempts.clientIpHash, keys.clientIpHash),
+            gt(adminLoginAttempts.occurredAt, new Date(dailyStartMs)),
+            recentUnlockedAttempt,
+          )
+        : undefined,
+    ),
+    hasRecentThresholdCrossingInDb({
+      keyColumn: "emailHash",
+      keyHash: keys.emailHash,
       limit: config.emailFailureLimit,
       lockoutMs: config.lockoutMs,
       nowMs,
-      timestampsMs: emailTimestamps,
       windowMs: config.windowMs,
     }),
-    ipDailyFailures: countAttemptsSince(ipTimestamps, dailyStartMs),
-    ipDailyLockedOut: hasRecentThresholdCrossing({
-      limit: config.ipDailyFailureLimit,
+    hasRecentThresholdCrossingInDb({
+      keyColumn: "emailIpHash",
+      keyHash: keys.emailIpHash,
+      limit: config.emailIpFailureLimit,
       lockoutMs: config.lockoutMs,
       nowMs,
-      timestampsMs: ipTimestamps,
-      windowMs: ONE_DAY_MS,
+      windowMs: config.windowMs,
     }),
-    ipFailures: countAttemptsSince(ipTimestamps, windowStartMs),
-    ipLockedOut: hasRecentThresholdCrossing({
+    hasRecentThresholdCrossingInDb({
+      keyColumn: "clientIpHash",
+      keyHash: keys.clientIpHash,
       limit: config.ipFailureLimit,
       lockoutMs: config.lockoutMs,
       nowMs,
-      timestampsMs: ipTimestamps,
       windowMs: config.windowMs,
     }),
+    hasRecentThresholdCrossingInDb({
+      keyColumn: "clientIpHash",
+      keyHash: keys.clientIpHash,
+      limit: config.ipDailyFailureLimit,
+      lockoutMs: config.lockoutMs,
+      nowMs,
+      windowMs: ONE_DAY_MS,
+    }),
+  ]);
+
+  return {
+    emailFailures,
+    emailIpFailures,
+    emailIpLockedOut,
+    emailLockedOut,
+    ipDailyFailures,
+    ipDailyLockedOut,
+    ipFailures,
+    ipLockedOut,
   };
 }
 
@@ -506,7 +631,12 @@ export async function checkAdminLoginProtection({
     !serverEnv.DATABASE_URL ||
     isAdminLoginProtectionFullyDisabled(adminSecurity)
   ) {
-    return { challengeRequired: false, keys, ok: true };
+    return {
+      challengeRequired: false,
+      challengeRequiredAfterFailure: false,
+      keys,
+      ok: true,
+    };
   }
 
   const config = getLoginProtectionConfig(adminSecurity);
@@ -514,12 +644,13 @@ export async function checkAdminLoginProtection({
   await maybeCleanupOldAttempts(config);
 
   const failures = await getFailureCounts(keys, config);
-  const { challengeRequired, lockedOut } = getLoginProtectionDecision({
-    challengeAfterFailures: config.challengeAfterFailures,
-    challengeMode: config.challengeMode,
-    failures,
-    throttleEnabled: config.throttleEnabled,
-  });
+  const { challengeRequired, challengeRequiredAfterFailure, lockedOut } =
+    getLoginProtectionDecision({
+      challengeAfterFailures: config.challengeAfterFailures,
+      challengeMode: config.challengeMode,
+      failures,
+      throttleEnabled: config.throttleEnabled,
+    });
 
   if (lockedOut) {
     return {
@@ -546,15 +677,17 @@ export async function checkAdminLoginProtection({
     }
   }
 
-  return { challengeRequired, keys, ok: true };
+  return { challengeRequired, challengeRequiredAfterFailure, keys, ok: true };
 }
 
 export async function recordAdminLoginFailure({
+  adminSecurity,
   email,
   keys,
   reason,
   request,
 }: {
+  adminSecurity?: AdminSecurityConfig;
   email: string;
   keys?: LoginAttemptKeys;
   reason: string;
@@ -575,6 +708,11 @@ export async function recordAdminLoginFailure({
   }
 
   await ensureLoginProtectionSchema();
+
+  if (adminSecurity && !isAdminLoginProtectionFullyDisabled(adminSecurity)) {
+    await maybeCleanupOldAttempts(getLoginProtectionConfig(adminSecurity));
+  }
+
   await getDb().insert(adminLoginAttempts).values({
     clientIpHash: resolvedKeys.clientIpHash,
     emailHash: resolvedKeys.emailHash,

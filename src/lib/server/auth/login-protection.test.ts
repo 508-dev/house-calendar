@@ -98,6 +98,7 @@ describe("getLoginProtectionDecision", () => {
       }),
     ).toEqual({
       challengeRequired: true,
+      challengeRequiredAfterFailure: true,
       lockedOut: false,
     });
   });
@@ -114,6 +115,24 @@ describe("getLoginProtectionDecision", () => {
         throttleEnabled: true,
       }).challengeRequired,
     ).toBe(false);
+  });
+
+  test("requires a challenge after a failure that reaches the threshold", () => {
+    expect(
+      getLoginProtectionDecision({
+        challengeAfterFailures: 3,
+        challengeMode: "after_failures",
+        failures: {
+          ...baseFailures(),
+          emailFailures: 2,
+        },
+        throttleEnabled: true,
+      }),
+    ).toEqual({
+      challengeRequired: false,
+      challengeRequiredAfterFailure: true,
+      lockedOut: false,
+    });
   });
 
   test("locks out only when throttling is enabled", () => {

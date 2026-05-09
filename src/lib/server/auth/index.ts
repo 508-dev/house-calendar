@@ -517,6 +517,7 @@ export async function loginAdmin(input: {
   if (!parsed.success) {
     if (!protectionFullyDisabled) {
       await recordAdminLoginFailure({
+        adminSecurity: input.adminSecurity,
         email: input.email,
         reason: "invalid_input",
         request: input.request,
@@ -539,6 +540,7 @@ export async function loginAdmin(input: {
 
   if (!protection.ok) {
     await recordAdminLoginFailure({
+      adminSecurity: input.adminSecurity,
       email,
       keys: protection.keys,
       reason: protection.challengeRequired ? "challenge_failed" : "locked",
@@ -569,6 +571,7 @@ export async function loginAdmin(input: {
   if (!user || !passwordMatches) {
     if (!protectionFullyDisabled) {
       await recordAdminLoginFailure({
+        adminSecurity: input.adminSecurity,
         email,
         keys: protection.keys,
         reason: "invalid_credentials",
@@ -577,7 +580,7 @@ export async function loginAdmin(input: {
     }
 
     return {
-      challengeRequired: protection.challengeRequired,
+      challengeRequired: protection.challengeRequiredAfterFailure,
       error: "Email or password is incorrect.",
       ok: false,
     };
