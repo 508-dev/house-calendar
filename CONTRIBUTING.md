@@ -51,6 +51,7 @@ Full setup and operator commands are in [DEVELOPMENT.md](./DEVELOPMENT.md).
 - Never commit real ICS URLs, signing secrets, mail credentials, or private instance config files
 - Keep checked-in config structural and non-secret
 - Put sensitive values in env or clearly sensitive database fields
+- Keep admin login protection policy in `adminSecurity`, but keep Turnstile keys and trusted proxy headers in env
 - `config/config.json` is gitignored and never committed; use it for local overrides or deployment-specific config supplied by your deploy mechanism, and only inline secrets or ICS URLs when that file is treated as private
 - Repo automation that pushes changes back to `main` from GitHub Actions should prefer a `GH_AUTOMATION_TOKEN` repository secret when workflow files under `.github/workflows/**` may be edited, and fall back to `github.token` otherwise; ensure `GH_AUTOMATION_TOKEN` has permission to update workflow files, for example `workflow` scope or permission where applicable
 

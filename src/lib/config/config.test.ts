@@ -60,6 +60,55 @@ describe("appConfigSchema", () => {
     expect(parsed.viewerAccess.mode).toBe("public");
   });
 
+  test("defaults admin login protection policy", () => {
+    const parsed = appConfigSchema.parse(baseConfig);
+
+    expect(parsed.adminSecurity).toEqual({
+      loginChallenge: {
+        afterFailures: 3,
+        mode: "off",
+        provider: "turnstile",
+      },
+      loginThrottle: {
+        enabled: true,
+        failureDelayMs: 500,
+        lockoutMinutes: 15,
+        maxEmailFailures: 8,
+        maxEmailIpFailures: 5,
+        maxIpDailyFailures: 120,
+        maxIpFailures: 30,
+        windowMinutes: 15,
+      },
+    });
+  });
+
+  test("accepts custom admin login protection policy", () => {
+    const parsed = appConfigSchema.parse({
+      ...baseConfig,
+      adminSecurity: {
+        loginChallenge: {
+          afterFailures: 2,
+          mode: "after_failures",
+        },
+        loginThrottle: {
+          maxEmailFailures: 4,
+          windowMinutes: 10,
+        },
+      },
+    });
+
+    expect(parsed.adminSecurity.loginChallenge).toEqual({
+      afterFailures: 2,
+      mode: "after_failures",
+      provider: "turnstile",
+    });
+    expect(parsed.adminSecurity.loginThrottle).toMatchObject({
+      enabled: true,
+      maxEmailFailures: 4,
+      windowMinutes: 10,
+    });
+  });
+
   test("accepts app-relative favicon paths in branding", () => {
     const parsed = appConfigSchema.parse({
       ...baseConfig,

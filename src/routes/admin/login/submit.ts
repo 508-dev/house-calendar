@@ -24,12 +24,18 @@ export const Route = createFileRoute("/admin/login/submit")({
         const appConfig = await loadAppConfig();
         const formData = await request.formData();
         const result = await loginAdmin({
+          adminSecurity: appConfig.adminSecurity,
+          challengeToken: String(formData.get("cf-turnstile-response") ?? ""),
           email: String(formData.get("email") ?? ""),
           password: String(formData.get("password") ?? ""),
+          request,
         });
 
         if (!result.ok) {
-          return redirectWithParams(request, { error: result.error });
+          return redirectWithParams(request, {
+            ...(result.challengeRequired ? { challenge: "1" } : {}),
+            error: result.error,
+          });
         }
 
         const response = redirectResponse(

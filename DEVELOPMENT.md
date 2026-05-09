@@ -200,6 +200,9 @@ bun run db:push
 ## Admin Auth And Local Operator Flow
 
 The app uses a small password-first admin model. SMTP is not required.
+Failed admin logins are throttled in Postgres by default. The login form can
+also require Cloudflare Turnstile when configured, but the default local
+developer flow does not require a CAPTCHA service.
 
 Generate a one-time bootstrap code:
 
@@ -226,6 +229,40 @@ Minimal local setup flow:
 3. Open `/admin/setup`
 4. Create the single admin account
 5. Use `/admin/login` for normal password login afterward
+
+Admin login protection policy belongs in app config, so template users can see
+and change it without touching code:
+
+```json
+"adminSecurity": {
+  "loginThrottle": {
+    "enabled": true,
+    "windowMinutes": 15,
+    "lockoutMinutes": 15,
+    "maxEmailFailures": 8,
+    "maxEmailIpFailures": 5,
+    "maxIpFailures": 30,
+    "maxIpDailyFailures": 120,
+    "failureDelayMs": 500
+  },
+  "loginChallenge": {
+    "mode": "off",
+    "provider": "turnstile",
+    "afterFailures": 3
+  }
+}
+```
+
+Only deployment wiring and provider keys belong in env:
+
+```bash
+# Optional. Only set this when the app is behind a trusted proxy or Cloudflare.
+ADMIN_LOGIN_IP_HEADER=cf-connecting-ip
+
+# Required only when adminSecurity.loginChallenge.mode is not "off".
+ADMIN_TURNSTILE_SITE_KEY=...
+ADMIN_TURNSTILE_SECRET_KEY=...
+```
 
 ## Current Calendar Sync Behavior
 
