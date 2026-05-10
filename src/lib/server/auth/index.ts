@@ -539,12 +539,15 @@ export async function loginAdmin(input: {
   });
 
   if (!protection.ok) {
-    await recordAdminLoginFailure({
-      adminSecurity: input.adminSecurity,
-      email,
-      keys: protection.keys,
-      reason: protection.challengeRequired ? "challenge_failed" : "locked",
-    });
+    if (protection.recordFailure) {
+      await recordAdminLoginFailure({
+        adminSecurity: input.adminSecurity,
+        email,
+        keys: protection.keys,
+        reason: protection.challengeRequired ? "challenge_failed" : "locked",
+      });
+    }
+
     await delayAfterFailedAdminLogin(input.adminSecurity);
     return {
       challengeRequired: protection.challengeRequired,

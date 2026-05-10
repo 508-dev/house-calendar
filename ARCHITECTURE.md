@@ -165,7 +165,7 @@ This repo now ships a deliberately small owner-auth model:
 - required admin email during setup
 - password login for normal admin access
 - Postgres-backed sessions
-- Postgres-backed failed-login throttling keyed by hashed email, hashed trusted client IP, and their pair
+- Postgres-backed failed-login throttling keyed by HMACed email, trusted client IP, and their pair
 - optional Cloudflare Turnstile verification for admin login
 - optional future email flows, not required for v1
 - a dev-only CLI bootstrap helper for local setup, disabled in production

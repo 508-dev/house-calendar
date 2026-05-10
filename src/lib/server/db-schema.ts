@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  check,
   index,
   integer,
   pgTable,
@@ -94,6 +95,10 @@ export const adminLoginAttempts = pgTable(
       table.occurredAt,
     ),
     index("admin_login_attempts_occurred_at_idx").on(table.occurredAt),
+    check(
+      "admin_login_attempts_scope_chk",
+      sql`${table.clientIpHash} is not null or ${table.emailHash} is not null or ${table.emailIpHash} is not null`,
+    ),
   ],
 );
 

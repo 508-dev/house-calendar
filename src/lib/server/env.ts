@@ -8,6 +8,10 @@ function optionalPositiveInt() {
 }
 
 const serverEnvSchema = z.object({
+  ADMIN_LOGIN_IDENTIFIER_PEPPER: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().min(16).optional(),
+  ),
   ADMIN_LOGIN_IP_HEADER: z.preprocess(
     (value) => (value === "" ? undefined : value),
     z.string().min(1).optional(),
@@ -34,6 +38,7 @@ const serverEnvSchema = z.object({
 });
 
 export const serverEnv = serverEnvSchema.parse({
+  ADMIN_LOGIN_IDENTIFIER_PEPPER: process.env.ADMIN_LOGIN_IDENTIFIER_PEPPER,
   ADMIN_LOGIN_IP_HEADER: process.env.ADMIN_LOGIN_IP_HEADER,
   ADMIN_TURNSTILE_SECRET_KEY: process.env.ADMIN_TURNSTILE_SECRET_KEY,
   ADMIN_TURNSTILE_SITE_KEY: process.env.ADMIN_TURNSTILE_SITE_KEY,

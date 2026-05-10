@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHmac } from "node:crypto";
 import { and, count, eq, gt, lte, ne, or, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import type { AdminSecurityConfig } from "@/lib/config/config";
@@ -8,6 +8,7 @@ import { serverEnv } from "../env";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const CLEANUP_INTERVAL_MS = 60 * 1000;
+const TURNSTILE_VERIFY_TIMEOUT_MS = 5_000;
 const TURNSTILE_SITEVERIFY_URL =
   "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 
@@ -77,6 +78,7 @@ export type AdminLoginProtectionCheck =
       error: string;
       keys: LoginAttemptKeys;
       ok: false;
+      recordFailure: boolean;
     };
 
 export function hasRecentThresholdCrossing({
@@ -222,8 +224,33 @@ async function ensureLoginProtectionSchema(): Promise<void> {
           email_hash text,
           email_ip_hash text,
           occurred_at timestamptz not null default now(),
-          reason text not null
+          reason text not null,
+          constraint admin_login_attempts_scope_chk
+            check (
+              client_ip_hash is not null
+              or email_hash is not null
+              or email_ip_hash is not null
+            )
         )
+      `;
+
+      await sql`
+        do $$
+        begin
+          if not exists (
+            select 1
+            from pg_constraint
+            where conname = 'admin_login_attempts_scope_chk'
+          ) then
+            alter table admin_login_attempts
+              add constraint admin_login_attempts_scope_chk
+              check (
+                client_ip_hash is not null
+                or email_hash is not null
+                or email_ip_hash is not null
+              );
+          end if;
+        end $$;
       `;
 
       await sql`
@@ -254,8 +281,23 @@ async function ensureLoginProtectionSchema(): Promise<void> {
   await schemaReadyPromise;
 }
 
+function getLoginIdentifierPepper(): string {
+  const pepper =
+    serverEnv.ADMIN_LOGIN_IDENTIFIER_PEPPER ?? serverEnv.DATABASE_URL;
+
+  if (!pepper) {
+    throw new Error(
+      "ADMIN_LOGIN_IDENTIFIER_PEPPER or DATABASE_URL is required for login attempt hashing.",
+    );
+  }
+
+  return pepper;
+}
+
 function hashIdentifier(value: string): string {
-  return createHash("sha256").update(value).digest("base64url");
+  return createHmac("sha256", getLoginIdentifierPepper())
+    .update(value)
+    .digest("base64url");
 }
 
 function normalizeIdentifier(value: string): string | undefined {
@@ -564,12 +606,13 @@ async function verifyTurnstileChallenge({
   clientIp?: string;
   config: LoginProtectionConfig;
   token: string | undefined;
-}): Promise<{ error?: string; ok: boolean }> {
+}): Promise<{ error?: string; ok: boolean; recordFailure: boolean }> {
   if (!config.turnstileSecretKey) {
     return {
       error:
         "Admin login challenge is enabled, but ADMIN_TURNSTILE_SECRET_KEY is not configured.",
       ok: false,
+      recordFailure: false,
     };
   }
 
@@ -577,6 +620,7 @@ async function verifyTurnstileChallenge({
     return {
       error: "Complete the login challenge and try again.",
       ok: false,
+      recordFailure: true,
     };
   }
 
@@ -590,10 +634,23 @@ async function verifyTurnstileChallenge({
   }
 
   try {
-    const response = await fetch(TURNSTILE_SITEVERIFY_URL, {
-      body,
-      method: "POST",
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(
+      () => controller.abort(),
+      TURNSTILE_VERIFY_TIMEOUT_MS,
+    );
+    let response: Response;
+
+    try {
+      response = await fetch(TURNSTILE_SITEVERIFY_URL, {
+        body,
+        method: "POST",
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+
     const parsed = turnstileVerifyResponseSchema.safeParse(
       await response.json(),
     );
@@ -602,14 +659,16 @@ async function verifyTurnstileChallenge({
       return {
         error: "The login challenge could not be verified.",
         ok: false,
+        recordFailure: true,
       };
     }
 
-    return { ok: true };
+    return { ok: true, recordFailure: false };
   } catch {
     return {
       error: "The login challenge could not be verified.",
       ok: false,
+      recordFailure: false,
     };
   }
 }
@@ -625,8 +684,6 @@ export async function checkAdminLoginProtection({
   email: string;
   request?: Request;
 }): Promise<AdminLoginProtectionCheck> {
-  const keys = buildAttemptKeys(email, request);
-
   if (
     !serverEnv.DATABASE_URL ||
     isAdminLoginProtectionFullyDisabled(adminSecurity)
@@ -634,11 +691,12 @@ export async function checkAdminLoginProtection({
     return {
       challengeRequired: false,
       challengeRequiredAfterFailure: false,
-      keys,
+      keys: {},
       ok: true,
     };
   }
 
+  const keys = buildAttemptKeys(email, request);
   const config = getLoginProtectionConfig(adminSecurity);
   await ensureLoginProtectionSchema();
   await maybeCleanupOldAttempts(config);
@@ -657,6 +715,7 @@ export async function checkAdminLoginProtection({
       error: "Too many login attempts. Wait a while and try again.",
       keys,
       ok: false,
+      recordFailure: true,
     };
   }
 
@@ -673,6 +732,7 @@ export async function checkAdminLoginProtection({
         error: challenge.error ?? "Complete the login challenge and try again.",
         keys,
         ok: false,
+        recordFailure: challenge.recordFailure,
       };
     }
   }

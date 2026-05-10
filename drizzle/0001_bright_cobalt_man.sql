@@ -4,7 +4,8 @@ CREATE TABLE "admin_login_attempts" (
 	"email_hash" text,
 	"email_ip_hash" text,
 	"occurred_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"reason" text NOT NULL
+	"reason" text NOT NULL,
+	CONSTRAINT "admin_login_attempts_scope_chk" CHECK ("client_ip_hash" is not null or "email_hash" is not null or "email_ip_hash" is not null)
 );
 --> statement-breakpoint
 CREATE INDEX "admin_login_attempts_client_ip_idx" ON "admin_login_attempts" USING btree ("client_ip_hash","occurred_at");--> statement-breakpoint

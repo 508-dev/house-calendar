@@ -259,6 +259,10 @@ Only deployment wiring and provider keys belong in env:
 # Optional. Only set this when the app is behind a trusted proxy or Cloudflare.
 ADMIN_LOGIN_IP_HEADER=cf-connecting-ip
 
+# Optional but recommended. Used to HMAC login-attempt email/IP identifiers.
+# Falls back to DATABASE_URL when unset.
+ADMIN_LOGIN_IDENTIFIER_PEPPER=generate-a-long-random-secret
+
 # Required only when adminSecurity.loginChallenge.mode is not "off".
 ADMIN_TURNSTILE_SITE_KEY=...
 ADMIN_TURNSTILE_SECRET_KEY=...

@@ -224,7 +224,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "admin_login_attempts_scope_chk": {
+          "name": "admin_login_attempts_scope_chk",
+          "value": "\"admin_login_attempts\".\"client_ip_hash\" is not null or \"admin_login_attempts\".\"email_hash\" is not null or \"admin_login_attempts\".\"email_ip_hash\" is not null"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.admin_sessions": {

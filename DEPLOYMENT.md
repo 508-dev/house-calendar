@@ -67,6 +67,17 @@ For another trusted reverse proxy, use its equivalent header, such as
 `x-forwarded-for` or `x-real-ip`. Do not trust those headers when clients can
 reach the app origin directly.
 
+Login-attempt email and IP identifiers are HMACed before storage. Set a stable
+deployment secret for that HMAC when possible:
+
+```bash
+ADMIN_LOGIN_IDENTIFIER_PEPPER=generate-a-long-random-secret
+```
+
+If this value is unset, the app falls back to `DATABASE_URL` as server-held
+secret material. Rotating the pepper effectively resets historical
+login-attempt throttling buckets.
+
 Optional Cloudflare Turnstile protection is also configured in
 `config/config.json` under `adminSecurity.loginChallenge`. It can be off, always
 required, or required only after repeated failures:
