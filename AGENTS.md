@@ -102,6 +102,10 @@ than pointing metadata at third-party hosts.
 
 Viewer page passwords belong in env, not checked-in config.
 
+Admin login protection policy belongs in checked-in config under
+`adminSecurity`. Deployment wiring such as Turnstile keys and trusted proxy
+client-IP headers belongs in env.
+
 The repo now supports one deployment with multiple houses. Keep viewer access
 global unless the change explicitly adds house-scoped viewer permissions.
 

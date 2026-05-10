@@ -6,18 +6,21 @@ import { Label } from "@/components/ui/label";
 import { getAdminLoginPageData } from "@/lib/server/start/page-data";
 
 export const Route = createFileRoute("/admin/login")({
-  beforeLoad: async () => {
+  component: AdminLoginPage,
+  head: () => ({
+    meta: [{ title: "Admin login" }],
+  }),
+  loader: async () => {
     const data = await getAdminLoginPageData();
 
     if (data.kind === "redirect") {
       throw redirect({ href: data.target });
     }
+
+    return data;
   },
-  component: AdminLoginPage,
-  head: () => ({
-    meta: [{ title: "Admin login" }],
-  }),
   validateSearch: (search: Record<string, unknown>) => ({
+    challenge: search.challenge === "1" ? "1" : undefined,
     error: typeof search.error === "string" ? search.error : undefined,
     message: typeof search.message === "string" ? search.message : undefined,
   }),
@@ -47,10 +50,22 @@ function Notice({
 }
 
 function AdminLoginPage() {
-  const { error, message } = Route.useSearch();
+  const data = Route.useLoaderData();
+  const { challenge, error, message } = Route.useSearch();
+  const showChallenge =
+    data.challenge.mode === "always" ||
+    (data.challenge.mode === "after_failures" && challenge === "1");
+  const canRenderChallenge = showChallenge && data.challenge.siteKey;
 
   return (
     <main className="min-h-screen px-4 py-6 sm:px-6 lg:px-8">
+      {canRenderChallenge ? (
+        <script
+          async
+          defer
+          src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+        />
+      ) : null}
       <Card className="mx-auto max-w-xl rounded-[2rem] border border-[color:var(--app-card-border)] bg-[color:var(--app-card)] p-6 shadow-[var(--app-shadow)] ring-0 sm:p-8">
         <p className="font-[family-name:var(--font-mono)] text-xs uppercase tracking-[0.28em] text-[var(--app-muted)]">
           Admin login
@@ -66,6 +81,12 @@ function AdminLoginPage() {
         <div className="mt-6 space-y-4">
           <Notice kind="error" message={error} />
           <Notice kind="info" message={message} />
+          {showChallenge && !data.challenge.siteKey ? (
+            <Notice
+              kind="error"
+              message="Admin login challenge is enabled, but ADMIN_TURNSTILE_SITE_KEY is not configured."
+            />
+          ) : null}
         </div>
 
         <form
@@ -100,6 +121,13 @@ function AdminLoginPage() {
               type="password"
             />
           </div>
+
+          {canRenderChallenge ? (
+            <div
+              className="cf-turnstile"
+              data-sitekey={data.challenge.siteKey}
+            />
+          ) : null}
 
           <div className="flex items-center justify-between gap-4">
             <Button

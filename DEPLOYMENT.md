@@ -20,6 +20,12 @@ If viewer password protection is enabled, it also needs:
 
 - `VIEWER_PASSWORD`
 
+If admin login protection is enabled beyond the default app throttle, it may
+also need:
+
+- Cloudflare Turnstile site and secret keys
+- a trusted client IP header from the reverse proxy or edge provider
+
 ## Required Environment
 
 Set `DATABASE_URL` to your production or hosted Postgres connection string.
@@ -44,6 +50,73 @@ ICS_URL_TAIWAN=https://example.com/private-feed.ics
 ```
 
 `ICS_SYNC_TTL_MINUTES` is optional if you want to override the default in-memory sync cache TTL.
+
+Admin login throttling policy is configured in `config/config.json` under
+`adminSecurity.loginThrottle`. It is enabled by default and stores
+failed-attempt counters in Postgres.
+
+To make IP-based limits meaningful, configure the app to read a client IP
+header only from infrastructure you trust. For Cloudflare, keep the origin from
+being directly reachable and use:
+
+```bash
+ADMIN_LOGIN_IP_HEADER=cf-connecting-ip
+```
+
+This also applies when the app is served through Cloudflare Tunnel, provided
+clients cannot bypass the tunnel and connect to the app origin directly.
+
+For another trusted reverse proxy, prefer a single-client-IP header, such as
+`x-real-ip`, that your edge sets after canonicalizing the client address. If you
+must use `x-forwarded-for`, ensure your edge strips untrusted incoming values and
+forwards a sanitized canonical client IP value to the origin. Do not trust these
+headers when clients can reach the app origin directly.
+
+Login-attempt email and IP identifiers are HMACed before storage. Set a stable
+deployment secret for that HMAC when possible:
+
+```bash
+ADMIN_LOGIN_IDENTIFIER_PEPPER=generate-a-long-random-secret
+```
+
+If this value is unset, the app falls back to `DATABASE_URL` as server-held
+secret material. Rotating the pepper effectively resets historical
+login-attempt throttling buckets.
+
+Optional Cloudflare Turnstile protection is also configured in
+`config/config.json` under `adminSecurity.loginChallenge`.
+
+Supported `loginChallenge.mode` values are:
+
+- `"off"`: do not show a Turnstile challenge. This is the default.
+- `"after_failures"`: show Turnstile after repeated failed login attempts.
+- `"always"`: require Turnstile on every admin login attempt.
+
+```json
+"adminSecurity": {
+  "loginChallenge": {
+    "mode": "after_failures"
+  }
+}
+```
+
+All `adminSecurity` fields are optional. If omitted, admin login throttling uses
+reasonable defaults: `loginThrottle.enabled=true`, `windowMinutes=15`,
+`lockoutMinutes=15`, `maxEmailFailures=8`, `maxEmailIpFailures=5`,
+`maxIpFailures=30`, `maxIpDailyFailures=120`, and `failureDelayMs=500`.
+Turnstile defaults to `loginChallenge.mode="off"`, `provider="turnstile"`, and
+`afterFailures=3`.
+
+If `adminSecurity.loginChallenge.mode` is not `off`, configure the
+deployment-specific Turnstile keys in env:
+
+```bash
+ADMIN_TURNSTILE_SITE_KEY=...
+ADMIN_TURNSTILE_SECRET_KEY=...
+```
+
+The browser renders the site key on `/admin/login`, and the server validates
+`cf-turnstile-response` with Cloudflare before checking the password.
 
 ## App Config
 
@@ -117,6 +190,7 @@ After deployment, verify:
 - viewer access behaves as intended for `public` or `password` mode
 - admin login or setup works
 - the sync action at `/admin/{siteId}/sync` completes successfully
+- admin throttling and any Turnstile challenge mode behave as intended
 
 For a programmatic post-deploy smoke check, run:
 
@@ -144,3 +218,29 @@ Do not commit these values.
 - The current calendar cache is in-memory and process-local, so restarts clear it
 - Viewer access is deployment-global today, not house-scoped
 - `config/config.json` should be treated as deployment state even when it contains only non-secret structure
+
+## Edge Protection
+
+App-level throttling should not be the only control on a public deployment.
+When using Cloudflare, put the app behind proxied DNS and add WAF rate limiting
+rules for admin endpoints.
+
+Good starting rules:
+
+- Rate limit `POST /admin/login/submit`, for example 5 requests per 5 minutes per client, with a Managed Challenge or temporary block action.
+- Rate limit `POST /admin/setup/submit` more strictly if setup is exposed before the admin account exists.
+- Add a broader, softer rule for `/admin/*` to slow scanning.
+
+Example expressions:
+
+```text
+http.request.method eq "POST" and http.request.uri.path eq "/admin/login/submit"
+```
+
+```text
+http.request.uri.path starts_with "/admin/"
+```
+
+Keep Cloudflare as the first layer. Keep the Postgres-backed app throttle
+enabled because it still protects the origin when edge settings are incomplete
+and it can key abuse by email as well as IP.

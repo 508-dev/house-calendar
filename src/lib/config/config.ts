@@ -49,6 +49,59 @@ const viewerAccessSchema = z.object({
   mode: z.enum(["public", "password"]).default("public"),
 });
 
+const adminSecuritySchema = z
+  .object({
+    loginThrottle: z
+      .object({
+        enabled: z.boolean().default(true),
+        failureDelayMs: z.number().int().min(0).default(500),
+        lockoutMinutes: z.number().int().positive().default(15),
+        maxEmailFailures: z.number().int().positive().default(8),
+        maxEmailIpFailures: z.number().int().positive().default(5),
+        maxIpDailyFailures: z.number().int().positive().default(120),
+        maxIpFailures: z.number().int().positive().default(30),
+        windowMinutes: z.number().int().positive().default(15),
+      })
+      .default({
+        enabled: true,
+        failureDelayMs: 500,
+        lockoutMinutes: 15,
+        maxEmailFailures: 8,
+        maxEmailIpFailures: 5,
+        maxIpDailyFailures: 120,
+        maxIpFailures: 30,
+        windowMinutes: 15,
+      }),
+    loginChallenge: z
+      .object({
+        afterFailures: z.number().int().positive().default(3),
+        mode: z.enum(["off", "always", "after_failures"]).default("off"),
+        provider: z.enum(["turnstile"]).default("turnstile"),
+      })
+      .default({
+        afterFailures: 3,
+        mode: "off",
+        provider: "turnstile",
+      }),
+  })
+  .default({
+    loginThrottle: {
+      enabled: true,
+      failureDelayMs: 500,
+      lockoutMinutes: 15,
+      maxEmailFailures: 8,
+      maxEmailIpFailures: 5,
+      maxIpDailyFailures: 120,
+      maxIpFailures: 30,
+      windowMinutes: 15,
+    },
+    loginChallenge: {
+      afterFailures: 3,
+      mode: "off",
+      provider: "turnstile",
+    },
+  });
+
 const calendarInterpretationSchema = z
   .object({
     allDayEndDateMode: z
@@ -137,6 +190,7 @@ export const siteConfigSchema = z
 
 export const appConfigSchema = z
   .object({
+    adminSecurity: adminSecuritySchema,
     defaultSiteId: z.string().min(1).optional(),
     viewerAccess: viewerAccessSchema.default({ mode: "public" }),
     sites: z.array(siteConfigSchema).min(1),
@@ -169,6 +223,7 @@ export const appConfigSchema = z
 
 export type AppConfig = z.infer<typeof appConfigSchema>;
 export type AppCalendar = z.infer<typeof appCalendarSchema>;
+export type AdminSecurityConfig = z.infer<typeof adminSecuritySchema>;
 export type SiteConfig = z.infer<typeof siteConfigSchema>;
 
 export function getDefaultSiteId(configInput: AppConfig): string {

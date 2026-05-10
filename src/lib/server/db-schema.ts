@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  check,
   index,
   integer,
   pgTable,
@@ -65,8 +66,45 @@ export const adminBootstrapCodes = pgTable(
   ],
 );
 
+export const adminLoginAttempts = pgTable(
+  "admin_login_attempts",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    clientIpHash: text("client_ip_hash"),
+    emailHash: text("email_hash"),
+    emailIpHash: text("email_ip_hash"),
+    occurredAt: timestamp("occurred_at", {
+      mode: "date",
+      withTimezone: true,
+    })
+      .notNull()
+      .defaultNow(),
+    reason: text("reason").notNull(),
+  },
+  (table) => [
+    index("admin_login_attempts_client_ip_idx").on(
+      table.clientIpHash,
+      table.occurredAt,
+    ),
+    index("admin_login_attempts_email_idx").on(
+      table.emailHash,
+      table.occurredAt,
+    ),
+    index("admin_login_attempts_email_ip_idx").on(
+      table.emailIpHash,
+      table.occurredAt,
+    ),
+    index("admin_login_attempts_occurred_at_idx").on(table.occurredAt),
+    check(
+      "admin_login_attempts_scope_chk",
+      sql`${table.clientIpHash} is not null or ${table.emailHash} is not null or ${table.emailIpHash} is not null`,
+    ),
+  ],
+);
+
 export const schema = {
   adminBootstrapCodes,
+  adminLoginAttempts,
   adminSessions,
   adminUsers,
 };

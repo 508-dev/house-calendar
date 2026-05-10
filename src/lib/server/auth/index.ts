@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { and, count, eq, gt, isNull, lte } from "drizzle-orm";
 import { z } from "zod";
+import type { AdminSecurityConfig } from "@/lib/config/config";
 import { getDb, getSql } from "../db";
 import { adminBootstrapCodes, adminSessions, adminUsers } from "../db-schema";
 import { serverEnv } from "../env";
@@ -10,6 +11,13 @@ import {
   getBootstrapCodeExpiry,
   hashBootstrapCode,
 } from "./bootstrap-code";
+import {
+  checkAdminLoginProtection,
+  clearAdminLoginFailures,
+  delayAfterFailedAdminLogin,
+  isAdminLoginProtectionFullyDisabled,
+  recordAdminLoginFailure,
+} from "./login-protection";
 import { hashPassword, verifyPassword } from "./password";
 
 const ADMIN_SESSION_COOKIE = "house_calendar_admin_session";
@@ -52,6 +60,7 @@ type AdminAuthState = {
 
 type AuthActionResult =
   | {
+      challengeRequired?: boolean;
       error: string;
       ok: false;
     }
@@ -86,6 +95,7 @@ type AuthDb = ReturnType<typeof getDb>;
 type AuthDbWriter = Pick<AuthDb, "insert">;
 
 let schemaReadyPromise: Promise<void> | undefined;
+let dummyPasswordHash: string | undefined;
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -93,6 +103,14 @@ function normalizeEmail(email: string): string {
 
 function hashSessionToken(token: string): string {
   return createHash("sha256").update(token).digest("base64url");
+}
+
+function getDummyPasswordHash(): string {
+  dummyPasswordHash ??= hashPassword(
+    "house-calendar dummy password for login timing",
+  );
+
+  return dummyPasswordHash;
 }
 
 function getErrorCode(error: unknown): string | undefined {
@@ -481,22 +499,62 @@ export async function bootstrapAdmin(input: {
 }
 
 export async function loginAdmin(input: {
+  adminSecurity: AdminSecurityConfig;
+  challengeToken?: string;
   email: string;
   password: string;
+  request?: Request;
 }): Promise<AuthActionResult> {
   if (!serverEnv.DATABASE_URL) {
     return { error: "DATABASE_URL is not configured.", ok: false };
   }
 
   const parsed = loginInputSchema.safeParse(input);
+  const protectionFullyDisabled = isAdminLoginProtectionFullyDisabled(
+    input.adminSecurity,
+  );
 
   if (!parsed.success) {
+    if (!protectionFullyDisabled) {
+      await recordAdminLoginFailure({
+        adminSecurity: input.adminSecurity,
+        email: input.email,
+        reason: "invalid_input",
+        request: input.request,
+      });
+      await delayAfterFailedAdminLogin(input.adminSecurity);
+    }
+
     return { error: "Enter a valid admin email and password.", ok: false };
   }
 
   await ensureAuthSchema();
   const db = getDb();
   const email = normalizeEmail(parsed.data.email);
+  const protection = await checkAdminLoginProtection({
+    adminSecurity: input.adminSecurity,
+    challengeToken: input.challengeToken,
+    email,
+    request: input.request,
+  });
+
+  if (!protection.ok) {
+    if (protection.recordFailure) {
+      await recordAdminLoginFailure({
+        adminSecurity: input.adminSecurity,
+        email,
+        keys: protection.keys,
+        reason: protection.challengeRequired ? "challenge_failed" : "locked",
+      });
+    }
+
+    await delayAfterFailedAdminLogin(input.adminSecurity);
+    return {
+      challengeRequired: protection.challengeRequired,
+      error: protection.error,
+      ok: false,
+    };
+  }
 
   const [user] = await db
     .select({
@@ -508,8 +566,34 @@ export async function loginAdmin(input: {
     .where(eq(adminUsers.email, email))
     .limit(1);
 
-  if (!user || !verifyPassword(parsed.data.password, user.passwordHash)) {
-    return { error: "Email or password is incorrect.", ok: false };
+  const passwordMatches = verifyPassword(
+    parsed.data.password,
+    user?.passwordHash ?? getDummyPasswordHash(),
+  );
+
+  if (!user || !passwordMatches) {
+    if (!protectionFullyDisabled) {
+      await recordAdminLoginFailure({
+        adminSecurity: input.adminSecurity,
+        email,
+        keys: protection.keys,
+        reason: "invalid_credentials",
+      });
+      await delayAfterFailedAdminLogin(input.adminSecurity);
+    }
+
+    return {
+      challengeRequired: protection.challengeRequiredAfterFailure,
+      error: "Email or password is incorrect.",
+      ok: false,
+    };
+  }
+
+  if (!protectionFullyDisabled) {
+    await clearAdminLoginFailures({
+      email,
+      keys: protection.keys,
+    });
   }
 
   return {

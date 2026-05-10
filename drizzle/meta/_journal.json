@@ -8,6 +8,13 @@
       "when": 1777081598533,
       "tag": "0000_watery_sunfire",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1778362722685,
+      "tag": "0001_bright_cobalt_man",
+      "breakpoints": true
     }
   ]
 }

@@ -161,7 +161,14 @@ export const getAdminLoginPageData = createServerFn({ method: "GET" }).handler(
       };
     }
 
-    return { kind: "ready" as const };
+    const { getAdminLoginChallengeUiConfig } = await import(
+      "@/lib/server/auth/login-protection"
+    );
+
+    return {
+      challenge: getAdminLoginChallengeUiConfig(appConfig.adminSecurity),
+      kind: "ready" as const,
+    };
   },
 );
 

@@ -15,6 +15,7 @@ It is built for the case where you want trusted people to know whether a room or
 - Supports one deployment with multiple houses, each with its own branding and parsing rules
 - Keeps the viewer experience read-only until stay requests have real notification or requester-auth support
 - Gives the owner a small self-hosted admin flow with password-based access and manual sync controls
+- Protects admin login with configurable app-level throttling and optional Cloudflare Turnstile
 
 ## Docs
 
