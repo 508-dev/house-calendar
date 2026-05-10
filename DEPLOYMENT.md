@@ -63,6 +63,9 @@ being directly reachable and use:
 ADMIN_LOGIN_IP_HEADER=cf-connecting-ip
 ```
 
+This also applies when the app is served through Cloudflare Tunnel, provided
+clients cannot bypass the tunnel and connect to the app origin directly.
+
 For another trusted reverse proxy, use its equivalent header, such as
 `x-forwarded-for` or `x-real-ip`. Do not trust those headers when clients can
 reach the app origin directly.
