@@ -3,6 +3,7 @@ import {
   getLoginProtectionDecision,
   hasRecentThresholdCrossing,
   isAdminLoginProtectionFullyDisabled,
+  shouldRecordTurnstileFailure,
 } from "./login-protection";
 
 function baseFailures() {
@@ -203,5 +204,18 @@ describe("isAdminLoginProtectionFullyDisabled", () => {
         },
       }),
     ).toBe(false);
+  });
+});
+
+describe("shouldRecordTurnstileFailure", () => {
+  test("records user-caused challenge failures", () => {
+    expect(shouldRecordTurnstileFailure(["invalid-input-response"])).toBe(true);
+    expect(shouldRecordTurnstileFailure(["timeout-or-duplicate"])).toBe(true);
+  });
+
+  test("does not record system or config challenge failures", () => {
+    expect(shouldRecordTurnstileFailure(["invalid-input-secret"])).toBe(false);
+    expect(shouldRecordTurnstileFailure(["internal-error"])).toBe(false);
+    expect(shouldRecordTurnstileFailure(undefined)).toBe(false);
   });
 });

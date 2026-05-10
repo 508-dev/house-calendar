@@ -170,6 +170,18 @@ export function isAdminLoginProtectionFullyDisabled(
   );
 }
 
+export function shouldRecordTurnstileFailure(
+  errorCodes: string[] | undefined,
+): boolean {
+  return (errorCodes ?? []).some((code) =>
+    new Set([
+      "invalid-input-response",
+      "missing-input-response",
+      "timeout-or-duplicate",
+    ]).has(code),
+  );
+}
+
 function getLoginProtectionConfig(
   adminSecurity: AdminSecurityConfig,
 ): LoginProtectionConfig {
@@ -655,11 +667,19 @@ async function verifyTurnstileChallenge({
       await response.json(),
     );
 
-    if (!response.ok || !parsed.success || !parsed.data.success) {
+    if (!response.ok || !parsed.success) {
       return {
         error: "The login challenge could not be verified.",
         ok: false,
-        recordFailure: true,
+        recordFailure: false,
+      };
+    }
+
+    if (!parsed.data.success) {
+      return {
+        error: "The login challenge could not be verified.",
+        ok: false,
+        recordFailure: shouldRecordTurnstileFailure(parsed.data["error-codes"]),
       };
     }
 
