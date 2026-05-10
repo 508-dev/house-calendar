@@ -776,7 +776,7 @@ export async function checkAdminLoginProtection({
       error: "Too many login attempts. Wait a while and try again.",
       keys,
       ok: false,
-      recordFailure: true,
+      recordFailure: false,
     };
   }
 
