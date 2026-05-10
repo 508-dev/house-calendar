@@ -84,8 +84,13 @@ secret material. Rotating the pepper effectively resets historical
 login-attempt throttling buckets.
 
 Optional Cloudflare Turnstile protection is also configured in
-`config/config.json` under `adminSecurity.loginChallenge`. It can be off, always
-required, or required only after repeated failures:
+`config/config.json` under `adminSecurity.loginChallenge`.
+
+Supported `loginChallenge.mode` values are:
+
+- `"off"`: do not show a Turnstile challenge. This is the default.
+- `"after_failures"`: show Turnstile after repeated failed login attempts.
+- `"always"`: require Turnstile on every admin login attempt.
 
 ```json
 "adminSecurity": {
