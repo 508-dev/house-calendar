@@ -66,9 +66,11 @@ ADMIN_LOGIN_IP_HEADER=cf-connecting-ip
 This also applies when the app is served through Cloudflare Tunnel, provided
 clients cannot bypass the tunnel and connect to the app origin directly.
 
-For another trusted reverse proxy, use its equivalent header, such as
-`x-forwarded-for` or `x-real-ip`. Do not trust those headers when clients can
-reach the app origin directly.
+For another trusted reverse proxy, prefer a single-client-IP header, such as
+`x-real-ip`, that your edge sets after canonicalizing the client address. If you
+must use `x-forwarded-for`, ensure your edge strips untrusted incoming values and
+forwards a sanitized canonical client IP value to the origin. Do not trust these
+headers when clients can reach the app origin directly.
 
 Login-attempt email and IP identifiers are HMACed before storage. Set a stable
 deployment secret for that HMAC when possible:
@@ -87,23 +89,18 @@ required, or required only after repeated failures:
 
 ```json
 "adminSecurity": {
-  "loginThrottle": {
-    "enabled": true,
-    "windowMinutes": 15,
-    "lockoutMinutes": 15,
-    "maxEmailFailures": 8,
-    "maxEmailIpFailures": 5,
-    "maxIpFailures": 30,
-    "maxIpDailyFailures": 120,
-    "failureDelayMs": 500
-  },
   "loginChallenge": {
-    "mode": "after_failures",
-    "provider": "turnstile",
-    "afterFailures": 3
+    "mode": "after_failures"
   }
 }
 ```
+
+All `adminSecurity` fields are optional. If omitted, admin login throttling uses
+reasonable defaults: `loginThrottle.enabled=true`, `windowMinutes=15`,
+`lockoutMinutes=15`, `maxEmailFailures=8`, `maxEmailIpFailures=5`,
+`maxIpFailures=30`, `maxIpDailyFailures=120`, and `failureDelayMs=500`.
+Turnstile defaults to `loginChallenge.mode="off"`, `provider="turnstile"`, and
+`afterFailures=3`.
 
 If `adminSecurity.loginChallenge.mode` is not `off`, configure the
 deployment-specific Turnstile keys in env:

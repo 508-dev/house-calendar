@@ -619,6 +619,15 @@ async function verifyTurnstileChallenge({
   config: LoginProtectionConfig;
   token: string | undefined;
 }): Promise<{ error?: string; ok: boolean; recordFailure: boolean }> {
+  if (!config.turnstileSiteKey) {
+    return {
+      error:
+        "Admin login challenge is enabled, but ADMIN_TURNSTILE_SITE_KEY is not configured.",
+      ok: false,
+      recordFailure: false,
+    };
+  }
+
   if (!config.turnstileSecretKey) {
     return {
       error:
@@ -704,10 +713,43 @@ export async function checkAdminLoginProtection({
   email: string;
   request?: Request;
 }): Promise<AdminLoginProtectionCheck> {
-  if (
-    !serverEnv.DATABASE_URL ||
-    isAdminLoginProtectionFullyDisabled(adminSecurity)
-  ) {
+  const config = getLoginProtectionConfig(adminSecurity);
+
+  if (isAdminLoginProtectionFullyDisabled(adminSecurity)) {
+    return {
+      challengeRequired: false,
+      challengeRequiredAfterFailure: false,
+      keys: {},
+      ok: true,
+    };
+  }
+
+  if (!config.throttleEnabled && config.challengeMode === "always") {
+    const challenge = await verifyTurnstileChallenge({
+      clientIp: getTrustedClientIp(request),
+      config,
+      token: challengeToken,
+    });
+
+    if (!challenge.ok) {
+      return {
+        challengeRequired: true,
+        error: challenge.error ?? "Complete the login challenge and try again.",
+        keys: {},
+        ok: false,
+        recordFailure: challenge.recordFailure,
+      };
+    }
+
+    return {
+      challengeRequired: true,
+      challengeRequiredAfterFailure: true,
+      keys: {},
+      ok: true,
+    };
+  }
+
+  if (!serverEnv.DATABASE_URL) {
     return {
       challengeRequired: false,
       challengeRequiredAfterFailure: false,
@@ -717,7 +759,6 @@ export async function checkAdminLoginProtection({
   }
 
   const keys = buildAttemptKeys(email, request);
-  const config = getLoginProtectionConfig(adminSecurity);
   await ensureLoginProtectionSchema();
   await maybeCleanupOldAttempts(config);
 

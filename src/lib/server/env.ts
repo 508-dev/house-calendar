@@ -7,23 +7,22 @@ function optionalPositiveInt() {
   );
 }
 
+function optionalNonEmptyString(minLength = 1) {
+  return z.preprocess((value) => {
+    if (typeof value !== "string") {
+      return value;
+    }
+
+    const trimmed = value.trim();
+    return trimmed === "" ? undefined : trimmed;
+  }, z.string().min(minLength).optional());
+}
+
 const serverEnvSchema = z.object({
-  ADMIN_LOGIN_IDENTIFIER_PEPPER: z.preprocess(
-    (value) => (value === "" ? undefined : value),
-    z.string().min(16).optional(),
-  ),
-  ADMIN_LOGIN_IP_HEADER: z.preprocess(
-    (value) => (value === "" ? undefined : value),
-    z.string().min(1).optional(),
-  ),
-  ADMIN_TURNSTILE_SECRET_KEY: z.preprocess(
-    (value) => (value === "" ? undefined : value),
-    z.string().min(1).optional(),
-  ),
-  ADMIN_TURNSTILE_SITE_KEY: z.preprocess(
-    (value) => (value === "" ? undefined : value),
-    z.string().min(1).optional(),
-  ),
+  ADMIN_LOGIN_IDENTIFIER_PEPPER: optionalNonEmptyString(16),
+  ADMIN_LOGIN_IP_HEADER: optionalNonEmptyString(),
+  ADMIN_TURNSTILE_SECRET_KEY: optionalNonEmptyString(),
+  ADMIN_TURNSTILE_SITE_KEY: optionalNonEmptyString(),
   DATABASE_URL: z.preprocess(
     (value) => (value === "" ? undefined : value),
     z.string().min(1).optional(),
