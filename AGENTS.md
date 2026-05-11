@@ -26,6 +26,52 @@ Before making non-trivial changes, read:
 
 Do not assume this is a generic starter app. The domain model matters here.
 
+## Agent Operating Rules
+
+Use these rules for every coding task in this repo unless the user explicitly
+overrides them.
+
+Before acting:
+
+- State material assumptions instead of hiding them. If the request has more
+  than one plausible meaning and the choice affects the outcome, ask first.
+- Read before writing. Before adding code, inspect the relevant exports,
+  immediate callers, and obvious shared utilities.
+- Project the consequence of recommendations and changes. If the downside of a
+  wrong answer is material, reversible only with effort, or privacy/security
+  sensitive, slow down and surface the risk.
+- For small, low-risk edits, trust the user's intent and proceed without
+  over-processing.
+
+While acting:
+
+- Touch only what the task requires. Do not refactor, reformat, or clean up
+  adjacent code unless it is necessary for the change.
+- Keep code and scope minimal. Do not add speculative features or abstractions
+  for one-off use.
+- Match existing conventions for naming, structure, error handling, tests, and
+  UI. If local patterns conflict, choose the newer or better-tested pattern,
+  explain why, and do not blend incompatible approaches.
+- Use code for deterministic decisions. Do not use an LLM for routing, retry
+  policy, status-code handling, date math, parsing that can be expressed as
+  rules, or other deterministic transforms.
+- Keep the main topology clear on non-trivial changes: where state lives, where
+  feedback or observability lives, what breaks if the code is deleted, and
+  where timing or ordering matters.
+
+After acting:
+
+- Ground specific claims before reporting them. Numbers, rankings, named
+  sources, performance claims, and causal claims should be either verified,
+  directly supported by context, or clearly marked as inference.
+- Tests should verify intent, not just execute code. A test that would still
+  pass after the business rule is broken is not sufficient.
+- Fail loud. Do not call work "done" if records, tests, errors, warnings, or
+  checks were skipped silently.
+- For multi-step work, checkpoint after significant steps: what changed, what
+  was verified, and what remains. If you lose the thread, stop and restate the
+  current state before continuing.
+
 ## Runtime Model
 
 - The app runs on the host with Bun, Vite, and TanStack Start.
