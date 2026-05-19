@@ -125,6 +125,8 @@ bun run archive
 The archive script only signals host processes that it can verify belong to the
 current workspace by current working directory or command-line path. It then
 runs `docker compose down --remove-orphans` for the workspace Compose project.
+Use `bun run archive -- --dry-run` to inspect the matching processes and Compose
+command without stopping anything.
 
 Tail Postgres logs:
 

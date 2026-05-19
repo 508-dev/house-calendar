@@ -1,6 +1,32 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+dry_run=0
+
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run | -n)
+      dry_run=1
+      ;;
+    --help | -h)
+      cat <<'EOF'
+Usage: scripts/archive-workspace.sh [--dry-run]
+
+Stops local dev processes for this workspace and runs:
+  docker compose down --remove-orphans
+
+Options:
+  -n, --dry-run  Print the processes and Compose command without stopping them.
+EOF
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $arg" >&2
+      exit 2
+      ;;
+  esac
+done
+
 workspace="${CONDUCTOR_WORKSPACE_PATH:-$(pwd -P)}"
 workspace="$(cd "$workspace" && pwd -P)"
 
@@ -47,7 +73,23 @@ terminate_pids() {
 
   for pid in "$@"; do
     if [[ -n "$pid" ]] && belongs_to_workspace "$pid"; then
-      kill "-$signal" "$pid" 2>/dev/null || true
+      if [[ "$dry_run" == "1" ]]; then
+        printf '[dry-run] Would send %s to PID %s\n' "$signal" "$pid"
+      else
+        kill "-$signal" "$pid" 2>/dev/null || true
+      fi
+    fi
+  done
+}
+
+describe_pids() {
+  for pid in "$@"; do
+    [[ -n "$pid" ]] || continue
+
+    if belongs_to_workspace "$pid"; then
+      printf '  PID %s: %s\n' \
+        "$pid" \
+        "$(ps -p "$pid" -o command= 2>/dev/null || true)"
     fi
   done
 }
@@ -79,6 +121,19 @@ pids="$(
     workspace_pids_matching "$process_pattern"
   } | sort -u
 )"
+
+if [[ "$dry_run" == "1" ]]; then
+  printf '[dry-run] Workspace: %s\n' "$workspace"
+  printf '[dry-run] App port: %s\n' "${app_port:-none}"
+  if [[ -n "$pids" ]]; then
+    printf '[dry-run] Matching workspace processes:\n'
+    describe_pids $pids
+  else
+    printf '[dry-run] Matching workspace processes: none\n'
+  fi
+  printf '[dry-run] Would run: docker compose down --remove-orphans\n'
+  exit 0
+fi
 
 terminate_pids TERM $pids
 sleep 2
