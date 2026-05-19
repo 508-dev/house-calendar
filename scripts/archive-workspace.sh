@@ -53,12 +53,26 @@ dotenv_value() {
   ' .env
 }
 
+pid_cwd() {
+  local pid="$1"
+  local proc_cwd="/proc/$pid/cwd"
+
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -n 1
+    return 0
+  fi
+
+  if [[ -e "$proc_cwd" ]] && command -v readlink >/dev/null 2>&1; then
+    readlink "$proc_cwd" 2>/dev/null || true
+  fi
+}
+
 belongs_to_workspace() {
   local pid="$1"
   local cwd=""
   local command=""
 
-  cwd="$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -n 1)"
+  cwd="$(pid_cwd "$pid")"
   if [[ "$cwd" == "$workspace" || "$cwd" == "$workspace"/* ]]; then
     return 0
   fi
@@ -109,6 +123,7 @@ listener_pids_for_port() {
   local port="$1"
 
   [[ "$port" =~ ^[0-9]+$ ]] || return 0
+  command -v lsof >/dev/null 2>&1 || return 0
   lsof -nP -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true
 }
 
