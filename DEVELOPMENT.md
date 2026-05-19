@@ -115,6 +115,17 @@ Stop Postgres:
 bun run db:stop
 ```
 
+Archive a worktree without leaving local dev processes or Compose containers
+running:
+
+```bash
+bun run archive
+```
+
+The archive script only signals host processes that it can verify belong to the
+current workspace by current working directory or command-line path. It then
+runs `docker compose down --remove-orphans` for the workspace Compose project.
+
 Tail Postgres logs:
 
 ```bash
