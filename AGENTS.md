@@ -79,6 +79,7 @@ After acting:
 - Drizzle is the ORM and typed query layer for Postgres.
 - shadcn/ui is installed for shared React UI primitives.
 - Per-worktree ports are derived by `scripts/worktree-ports.ts`, and app ports skip browser-blocked ports such as `5060` and `5061`.
+- In Conductor workspaces, `CONDUCTOR_PORT` is the first port in a 10-port range assigned to the workspace; generated app and Postgres ports should stay inside that range unless explicit `WORKTREE_*_PORT` overrides are set.
 - `bun dev` already handles writing `.env` and starting Vite on the derived port.
 
 Use these commands instead of improvising:

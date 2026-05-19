@@ -6,6 +6,8 @@ import { resolve } from "node:path";
 export const DEFAULT_WORKTREE_DEV_BASE_PORT = 4321;
 export const DEFAULT_WORKTREE_POSTGRES_BASE_PORT = 5432;
 export const DEFAULT_WORKTREE_PORT_SPAN = 1000;
+export const CONDUCTOR_PORT_ENV = "CONDUCTOR_PORT";
+export const CONDUCTOR_PORT_SPAN = 10;
 export const WORKTREE_DEV_BASE_PORT_ENV = "WORKTREE_DEV_BASE_PORT";
 export const WORKTREE_DEV_PORT_ENV = "WORKTREE_DEV_PORT";
 export const WORKTREE_POSTGRES_BASE_PORT_ENV = "WORKTREE_POSTGRES_BASE_PORT";
@@ -103,6 +105,7 @@ function resolvePort({
   env,
   explicitPortEnvName,
   fallbackPortEnvName,
+  ignoreFallbackExplicitPort = false,
   pathKey,
   span,
   worktreeRoot,
@@ -114,6 +117,7 @@ function resolvePort({
   env: NodeJS.ProcessEnv;
   explicitPortEnvName: string;
   fallbackPortEnvName?: string;
+  ignoreFallbackExplicitPort?: boolean;
   pathKey: string;
   span: number;
   worktreeRoot: string;
@@ -124,7 +128,8 @@ function resolvePort({
     explicitPortEnvName,
   );
   const fallbackExplicitPort =
-    primaryExplicitPortValue === undefined || primaryExplicitPortValue === ""
+    !ignoreFallbackExplicitPort &&
+    (primaryExplicitPortValue === undefined || primaryExplicitPortValue === "")
       ? parsePortLike(
           fallbackPortEnvName ? env[fallbackPortEnvName] : undefined,
           fallbackPortEnvName ?? explicitPortEnvName,
@@ -296,44 +301,71 @@ export async function resolveWorktreePorts({
     throw new Error("worktreeRoot is required to resolve worktree ports.");
   }
 
+  const conductorBasePort = parsePortLike(
+    env[CONDUCTOR_PORT_ENV],
+    CONDUCTOR_PORT_ENV,
+  );
   const span =
-    parsePositiveInteger(env[WORKTREE_PORT_SPAN_ENV], WORKTREE_PORT_SPAN_ENV) ??
-    DEFAULT_WORKTREE_PORT_SPAN;
-  const pathKey = worktreePathKey(worktreeRoot);
+    conductorBasePort !== undefined
+      ? CONDUCTOR_PORT_SPAN
+      : (parsePositiveInteger(
+          env[WORKTREE_PORT_SPAN_ENV],
+          WORKTREE_PORT_SPAN_ENV,
+        ) ?? DEFAULT_WORKTREE_PORT_SPAN);
+  if (
+    conductorBasePort !== undefined &&
+    conductorBasePort + span - 1 > MAX_PORT
+  ) {
+    throw new Error(
+      `${CONDUCTOR_PORT_ENV} + ${CONDUCTOR_PORT_SPAN} - 1 must not exceed ${MAX_PORT}.`,
+    );
+  }
 
-  const [app, postgres] = await Promise.all([
-    resolveAvailablePort(
-      resolvePort({
-        basePortEnvName: WORKTREE_DEV_BASE_PORT_ENV,
-        defaultBasePort: DEFAULT_WORKTREE_DEV_BASE_PORT,
-        disallowedPorts: CHROME_BLOCKED_WEB_PORTS,
-        env,
-        explicitPortEnvName: WORKTREE_DEV_PORT_ENV,
-        fallbackPortEnvName: "PORT",
-        pathKey,
-        span,
-        worktreeRoot,
-      }),
-      CHROME_BLOCKED_WEB_PORTS,
-    ),
-    resolveAvailablePort(
-      resolvePort({
-        basePortEnvName: WORKTREE_POSTGRES_BASE_PORT_ENV,
-        defaultBasePort: DEFAULT_WORKTREE_POSTGRES_BASE_PORT,
-        env,
-        explicitPortEnvName: WORKTREE_POSTGRES_PORT_ENV,
-        fallbackPortEnvName: "POSTGRES_PORT",
-        pathKey,
-        span,
-        worktreeRoot,
-      }),
-    ),
-  ]);
+  const pathKey = worktreePathKey(worktreeRoot);
+  const ignoreFallbackExplicitPort = conductorBasePort !== undefined;
+
+  const app = await resolveAvailablePort(
+    resolvePort({
+      basePort: conductorBasePort,
+      basePortEnvName: WORKTREE_DEV_BASE_PORT_ENV,
+      defaultBasePort: DEFAULT_WORKTREE_DEV_BASE_PORT,
+      disallowedPorts: CHROME_BLOCKED_WEB_PORTS,
+      env,
+      explicitPortEnvName: WORKTREE_DEV_PORT_ENV,
+      fallbackPortEnvName: "PORT",
+      ignoreFallbackExplicitPort,
+      pathKey,
+      span,
+      worktreeRoot,
+    }),
+    CHROME_BLOCKED_WEB_PORTS,
+  );
+
+  const postgresReservedPorts =
+    conductorBasePort !== undefined ? new Set([app.port]) : undefined;
+  const postgres = await resolveAvailablePort(
+    resolvePort({
+      basePort: conductorBasePort,
+      basePortEnvName: WORKTREE_POSTGRES_BASE_PORT_ENV,
+      defaultBasePort: DEFAULT_WORKTREE_POSTGRES_BASE_PORT,
+      env,
+      explicitPortEnvName: WORKTREE_POSTGRES_PORT_ENV,
+      fallbackPortEnvName: "POSTGRES_PORT",
+      ignoreFallbackExplicitPort,
+      pathKey,
+      span,
+      worktreeRoot,
+    }),
+    postgresReservedPorts,
+  );
 
   return {
     app,
     postgres,
-    databaseUrl: env.DATABASE_URL || buildDatabaseUrl(env, postgres.port),
+    databaseUrl:
+      conductorBasePort === undefined
+        ? env.DATABASE_URL || buildDatabaseUrl(env, postgres.port)
+        : buildDatabaseUrl(env, postgres.port),
     projectName: worktreeComposeProjectName(worktreeRoot),
     worktreeRoot: resolve(worktreeRoot),
   };

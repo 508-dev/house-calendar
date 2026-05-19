@@ -636,7 +636,7 @@ This protects against accidental holds, spam reservations, and confusing state.
 
 - app on host
 - Postgres in Compose
-- worktree-aware port derivation
+- worktree-aware port derivation, constrained to Conductor's assigned 10-port range when `CONDUCTOR_PORT` is present
 
 Relevant files:
 

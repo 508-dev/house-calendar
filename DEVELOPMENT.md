@@ -12,6 +12,7 @@ If you want the product overview, start with [README.md](./README.md). If you wa
 - Postgres runs in Docker Compose for local development
 - Drizzle is the ORM and typed query layer for Postgres
 - Per-worktree ports are derived by `scripts/worktree-ports.ts`, and app ports skip browser-blocked ports such as `5060` and `5061`
+- In Conductor workspaces, `CONDUCTOR_PORT` is treated as the first port in the workspace's assigned 10-port range; generated app and Postgres ports stay inside that range unless explicit `WORKTREE_*_PORT` overrides are set
 - `bun dev` writes `.env` for the current worktree and starts Vite on the derived port
 
 ## Prerequisites
@@ -301,7 +302,7 @@ Privacy rules for timed events:
 Only Postgres is containerized locally.
 
 - [compose.yml](./compose.yml) starts a local `postgres:18-alpine`
-- [scripts/worktree-ports.ts](./scripts/worktree-ports.ts) derives unique app and database ports from the worktree path
+- [scripts/worktree-ports.ts](./scripts/worktree-ports.ts) derives unique app and database ports from the worktree path, or from the narrow `CONDUCTOR_PORT` range when Conductor assigns one
 - [scripts/dev.ts](./scripts/dev.ts) writes `.env` and starts Vite on the derived port
 - [src/lib/server/db-schema.ts](./src/lib/server/db-schema.ts) is the Drizzle schema source
 
