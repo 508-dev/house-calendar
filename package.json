@@ -14,6 +14,7 @@
     "db:start": "bun run ports:write && docker compose up -d postgres",
     "db:stop": "bun run ports:write && docker compose down",
     "db:logs": "bun run ports:write && docker compose logs -f postgres",
+    "archive": "bash scripts/archive-workspace.sh",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "admin:bootstrap-code": "bun run scripts/admin-bootstrap-code.ts",

@@ -4,6 +4,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  CONDUCTOR_PORT_SPAN,
   resolveWorktreePorts,
   worktreePortOffset,
   writeWorktreeEnvFiles,
@@ -109,6 +110,49 @@ describe("worktree ports", () => {
     expect(envFile).toContain('POSTGRES_DB="house calendar"');
     expect(envFile).toContain('POSTGRES_USER="user name"');
     expect(envFile).toContain('POSTGRES_PASSWORD="p@ss:/#word"');
+  });
+
+  test("uses the Conductor 10-port range when CONDUCTOR_PORT is set", async () => {
+    const conductorPort = 62000;
+    const bundle = await resolveWorktreePorts({
+      worktreeRoot: join(tmpdir(), "house-calendar-test-conductor-range"),
+      env: {
+        CONDUCTOR_PORT: String(conductorPort),
+        DATABASE_URL: "postgresql://stale:stale@127.0.0.1:49999/stale",
+        NODE_ENV: "test",
+        PORT: "49998",
+        POSTGRES_PORT: "49999",
+        WORKTREE_DEV_BASE_PORT: "4300",
+        WORKTREE_PORT_SPAN: "1000",
+        WORKTREE_POSTGRES_BASE_PORT: "5400",
+      },
+    });
+
+    expect(bundle.app.port).toBeGreaterThanOrEqual(conductorPort);
+    expect(bundle.app.port).toBeLessThan(conductorPort + CONDUCTOR_PORT_SPAN);
+    expect(bundle.postgres.port).toBeGreaterThanOrEqual(conductorPort);
+    expect(bundle.postgres.port).toBeLessThan(
+      conductorPort + CONDUCTOR_PORT_SPAN,
+    );
+    expect(bundle.postgres.port).not.toBe(bundle.app.port);
+    expect(bundle.app.span).toBe(CONDUCTOR_PORT_SPAN);
+    expect(bundle.postgres.span).toBe(CONDUCTOR_PORT_SPAN);
+    expect(bundle.databaseUrl).toContain(`@127.0.0.1:${bundle.postgres.port}/`);
+  });
+
+  test("preserves explicit worktree ports over CONDUCTOR_PORT", async () => {
+    const bundle = await resolveWorktreePorts({
+      worktreeRoot: join(tmpdir(), "house-calendar-test-conductor-explicit"),
+      env: {
+        CONDUCTOR_PORT: "62020",
+        NODE_ENV: "test",
+        WORKTREE_DEV_PORT: "62040",
+        WORKTREE_POSTGRES_PORT: "62041",
+      },
+    });
+
+    expect(bundle.app.port).toBe(62040);
+    expect(bundle.postgres.port).toBe(62041);
   });
 
   test("probes forward when the hashed port is already occupied", async () => {
