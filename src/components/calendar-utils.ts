@@ -228,18 +228,15 @@ export function getWholeHouseDetailLabel(day: DailyAvailability): string {
     return getDayStatusLabel(day);
   }
 
+  if (day.status === "tentative") {
+    return "Whole house tentative";
+  }
+
   if (
     day.status === "unavailable" &&
     day.rooms.every((room) => room.status === "free")
   ) {
     return "Whole house unavailable";
-  }
-
-  if (
-    day.status === "tentative" &&
-    day.rooms.every((room) => room.status === "free")
-  ) {
-    return "Whole house tentative";
   }
 
   return formatRoomSummary(day);

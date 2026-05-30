@@ -106,6 +106,38 @@ describe("deriveDailyAvailability", () => {
     expect(days[0]?.rooms.every((room) => room.status === "free")).toBeTrue();
   });
 
+  test("tentative shared-space crashes keep the whole house tentative when a room is occupied", () => {
+    const days = deriveDailyAvailability(
+      exampleHouseConfig,
+      [
+        rawCalendarEventSchema.parse({
+          id: "evt-room-stay",
+          title: "Dana stays (guest room)",
+          startDate: "2026-04-19",
+          endDate: "2026-04-20",
+          allDay: true,
+        }),
+        rawCalendarEventSchema.parse({
+          id: "evt-tentative-shared-space-crash",
+          title: "Charlie maybe crashes (sofa)",
+          startDate: "2026-04-19",
+          endDate: "2026-04-20",
+          allDay: true,
+        }),
+      ],
+      "2026-04-19",
+      1,
+    );
+
+    expect(days[0]?.status).toBe("tentative");
+    expect(
+      days[0]?.rooms.find((room) => room.id === "guest-room")?.status,
+    ).toBe("occupied");
+    expect(days[0]?.rooms.find((room) => room.id === "my-room")?.status).toBe(
+      "free",
+    );
+  });
+
   test("marks tentative room stays without promoting them to confirmed occupancy", () => {
     const days = deriveDailyAvailability(
       exampleHouseConfig,

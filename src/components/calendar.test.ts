@@ -268,6 +268,21 @@ describe("getWholeHouseDetailLabel", () => {
 
     expect(label).toBe("Whole house unavailable");
   });
+
+  test("preserves tentative whole-house wording when a room is occupied", () => {
+    const label = getWholeHouseDetailLabel({
+      date: "2026-05-01",
+      events: [],
+      presence: [],
+      rooms: [
+        { id: "my-room", name: "My room", status: "free" },
+        { id: "guest-room", name: "Guest room", status: "occupied" },
+      ],
+      status: "tentative",
+    });
+
+    expect(label).toBe("Whole house tentative");
+  });
 });
 
 describe("getAnchorPreviewPosition", () => {

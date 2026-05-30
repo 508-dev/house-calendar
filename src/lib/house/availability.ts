@@ -355,15 +355,15 @@ export function deriveDailyAvailability(
         ? "unavailable"
         : day.hasUnknownStay
           ? "unknown"
-          : occupiedRooms === 0
-            ? tentativeRooms === 0
-              ? day.houseBlockStatus === "tentative"
-                ? "tentative"
-                : "available"
-              : "tentative"
-            : occupiedRooms === day.rooms.length
-              ? "unavailable"
-              : "partial";
+          : occupiedRooms === day.rooms.length
+            ? "unavailable"
+            : day.houseBlockStatus === "tentative"
+              ? "tentative"
+              : occupiedRooms === 0
+                ? tentativeRooms === 0
+                  ? "available"
+                  : "tentative"
+                : "partial";
 
     return dailyAvailabilitySchema.parse({
       ...day,
