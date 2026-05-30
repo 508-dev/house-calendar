@@ -350,20 +350,19 @@ export function deriveDailyAvailability(
     const tentativeRooms = rooms.filter(
       (room) => room.status === "tentative",
     ).length;
-    const status =
-      day.houseBlockStatus === "occupied"
+    const status = day.hasUnknownStay
+      ? "unknown"
+      : day.houseBlockStatus === "occupied"
         ? "unavailable"
-        : day.hasUnknownStay
-          ? "unknown"
-          : occupiedRooms === day.rooms.length
-            ? "unavailable"
-            : day.houseBlockStatus === "tentative"
-              ? "tentative"
-              : occupiedRooms === 0
-                ? tentativeRooms === 0
-                  ? "available"
-                  : "tentative"
-                : "partial";
+        : occupiedRooms === day.rooms.length
+          ? "unavailable"
+          : day.houseBlockStatus === "tentative"
+            ? "tentative"
+            : occupiedRooms === 0
+              ? tentativeRooms === 0
+                ? "available"
+                : "tentative"
+              : "partial";
 
     return dailyAvailabilitySchema.parse({
       ...day,

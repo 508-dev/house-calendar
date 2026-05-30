@@ -86,6 +86,42 @@ describe("deriveDailyAvailability", () => {
     ]);
   });
 
+  test("ambiguous stays remain unknown when a shared-space crash also blocks the house", () => {
+    const days = deriveDailyAvailability(
+      exampleHouseConfig,
+      [
+        rawCalendarEventSchema.parse({
+          id: "evt-unknown-stay",
+          title: "Someone stays",
+          startDate: "2026-04-19",
+          endDate: "2026-04-20",
+          allDay: true,
+        }),
+        rawCalendarEventSchema.parse({
+          id: "evt-shared-space-crash",
+          title: "Charlie crashes on the couch",
+          startDate: "2026-04-19",
+          endDate: "2026-04-20",
+          allDay: true,
+        }),
+      ],
+      "2026-04-19",
+      1,
+    );
+
+    expect(days[0]?.status).toBe("unknown");
+    expect(days[0]?.rooms.every((room) => room.status === "free")).toBeTrue();
+    expect(days[0]?.events).toEqual([
+      {
+        allDay: true,
+        endDate: "2026-04-20",
+        id: "evt-shared-space-crash:2026-04-19:shared-space-crash",
+        startDate: "2026-04-19",
+        title: "Shared-space crash",
+      },
+    ]);
+  });
+
   test("tentative shared-space crashes tentatively block whole-house availability", () => {
     const days = deriveDailyAvailability(
       exampleHouseConfig,
