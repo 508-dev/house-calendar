@@ -28,6 +28,9 @@ If you want the product overview, start with [README.md](./README.md). If you wa
    bun install
    ```
 
+   `bunfig.toml` applies a seven-day cooldown for newly published npm
+   packages to reduce dependency supply-chain risk.
+
 2. See the derived ports for this worktree:
 
    ```bash

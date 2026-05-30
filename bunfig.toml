@@ -1,0 +1,3 @@
+[install]
+# Seven-day cooldown for newly published npm packages.
+minimumReleaseAge = 604800
