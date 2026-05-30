@@ -63,6 +63,7 @@ export type AnchorRect = {
 const previewViewportPadding = 16;
 const previewPointerGap = 18;
 const previewAnchorGap = 10;
+const sharedSpaceCrashEventIdSuffix = ":shared-space-crash";
 
 export function buildWeeks(days: DailyAvailability[]): CalendarWeek[] {
   if (days.length === 0) {
@@ -138,6 +139,7 @@ export function buildWeeks(days: DailyAvailability[]): CalendarWeek[] {
 export function getDayStatusLabel(day: DailyAvailability): string {
   const hasSingleRoom = day.rooms.length === 1;
   const hasOccupiedRoom = day.rooms.some((room) => room.status === "occupied");
+  const hasSharedSpaceBlock = hasSharedSpaceCrashNote(day);
 
   switch (day.status) {
     case "available":
@@ -147,7 +149,7 @@ export function getDayStatusLabel(day: DailyAvailability): string {
     case "partial":
       return "Partially occupied";
     case "unavailable":
-      if (!hasOccupiedRoom) {
+      if (hasSharedSpaceBlock || !hasOccupiedRoom) {
         return "Whole house unavailable";
       }
 
@@ -219,22 +221,30 @@ export function formatRoomSummary(day: DailyAvailability): string {
   return formatRoomCount(occupiedCount, "occupied");
 }
 
+function hasSharedSpaceCrashNote(day: DailyAvailability): boolean {
+  return day.events.some(
+    (event) => event.allDay && event.id.endsWith(sharedSpaceCrashEventIdSuffix),
+  );
+}
+
 export function getWholeHouseDetailLabel(day: DailyAvailability): string {
   if (day.rooms.length === 1) {
     return getDayStatusLabel(day);
   }
 
+  const hasSharedSpaceBlock = hasSharedSpaceCrashNote(day);
+
   if (day.status === "unknown") {
     return getDayStatusLabel(day);
   }
 
-  if (day.status === "tentative") {
+  if (day.status === "tentative" && hasSharedSpaceBlock) {
     return "Whole house tentative";
   }
 
   if (
     day.status === "unavailable" &&
-    day.rooms.every((room) => room.status === "free")
+    (hasSharedSpaceBlock || day.rooms.every((room) => room.status === "free"))
   ) {
     return "Whole house unavailable";
   }

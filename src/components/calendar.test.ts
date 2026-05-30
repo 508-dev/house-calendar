@@ -236,6 +236,31 @@ describe("buildDayAriaLabel", () => {
       "May 1, 2026. Whole house unavailable. All rooms free. 1 day event",
     );
   });
+
+  test("describes shared-space blocks with room occupancy as whole-house unavailable", () => {
+    const label = buildDayAriaLabel({
+      date: "2026-05-01",
+      events: [
+        {
+          allDay: true,
+          endDate: "2026-05-02",
+          id: "evt-shared-space-crash:2026-05-01:shared-space-crash",
+          startDate: "2026-05-01",
+          title: "Shared-space crash",
+        },
+      ],
+      presence: [],
+      rooms: [
+        { id: "my-room", name: "My room", status: "free" },
+        { id: "guest-room", name: "Guest room", status: "occupied" },
+      ],
+      status: "unavailable",
+    });
+
+    expect(label).toBe(
+      "May 1, 2026. Whole house unavailable. 1 room occupied. 1 day event",
+    );
+  });
 });
 
 describe("getWholeHouseDetailLabel", () => {
@@ -269,10 +294,18 @@ describe("getWholeHouseDetailLabel", () => {
     expect(label).toBe("Whole house unavailable");
   });
 
-  test("preserves tentative whole-house wording when a room is occupied", () => {
+  test("preserves tentative whole-house wording for shared-space blocks", () => {
     const label = getWholeHouseDetailLabel({
       date: "2026-05-01",
-      events: [],
+      events: [
+        {
+          allDay: true,
+          endDate: "2026-05-02",
+          id: "evt-shared-space-crash:2026-05-01:shared-space-crash",
+          startDate: "2026-05-01",
+          title: "Shared-space crash",
+        },
+      ],
       presence: [],
       rooms: [
         { id: "my-room", name: "My room", status: "free" },
@@ -282,6 +315,44 @@ describe("getWholeHouseDetailLabel", () => {
     });
 
     expect(label).toBe("Whole house tentative");
+  });
+
+  test("keeps room-only tentative stays in the whole-house row summary", () => {
+    const label = getWholeHouseDetailLabel({
+      date: "2026-05-01",
+      events: [],
+      presence: [],
+      rooms: [
+        { id: "my-room", name: "My room", status: "free" },
+        { id: "guest-room", name: "Guest room", status: "tentative" },
+      ],
+      status: "tentative",
+    });
+
+    expect(label).toBe("1 room tentative");
+  });
+
+  test("describes shared-space blocks with room occupancy as whole-house unavailable", () => {
+    const label = getWholeHouseDetailLabel({
+      date: "2026-05-01",
+      events: [
+        {
+          allDay: true,
+          endDate: "2026-05-02",
+          id: "evt-shared-space-crash:2026-05-01:shared-space-crash",
+          startDate: "2026-05-01",
+          title: "Shared-space crash",
+        },
+      ],
+      presence: [],
+      rooms: [
+        { id: "my-room", name: "My room", status: "free" },
+        { id: "guest-room", name: "Guest room", status: "occupied" },
+      ],
+      status: "unavailable",
+    });
+
+    expect(label).toBe("Whole house unavailable");
   });
 });
 
