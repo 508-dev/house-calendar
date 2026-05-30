@@ -79,7 +79,42 @@ describe("deriveDailyAvailability", () => {
       {
         allDay: true,
         endDate: "2026-04-20",
-        id: "evt-shared-space-crash:2026-04-19:shared-space-crash",
+        id: "2026-04-19:shared-space-crash",
+        startDate: "2026-04-19",
+        title: "Shared-space crash",
+      },
+    ]);
+  });
+
+  test("deduplicates shared-space crash notes per day", () => {
+    const days = deriveDailyAvailability(
+      exampleHouseConfig,
+      [
+        rawCalendarEventSchema.parse({
+          id: "evt-couch-crash",
+          title: "Charlie crashes on the couch",
+          startDate: "2026-04-19",
+          endDate: "2026-04-20",
+          allDay: true,
+        }),
+        rawCalendarEventSchema.parse({
+          id: "evt-floor-crash",
+          title: "Dana crashes on the floor",
+          startDate: "2026-04-19",
+          endDate: "2026-04-20",
+          allDay: true,
+        }),
+      ],
+      "2026-04-19",
+      1,
+    );
+
+    expect(days[0]?.status).toBe("unavailable");
+    expect(days[0]?.events).toEqual([
+      {
+        allDay: true,
+        endDate: "2026-04-20",
+        id: "2026-04-19:shared-space-crash",
         startDate: "2026-04-19",
         title: "Shared-space crash",
       },
@@ -115,7 +150,7 @@ describe("deriveDailyAvailability", () => {
       {
         allDay: true,
         endDate: "2026-04-20",
-        id: "evt-shared-space-crash:2026-04-19:shared-space-crash",
+        id: "2026-04-19:shared-space-crash",
         startDate: "2026-04-19",
         title: "Shared-space crash",
       },

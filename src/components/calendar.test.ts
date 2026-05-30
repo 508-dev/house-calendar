@@ -219,7 +219,7 @@ describe("buildDayAriaLabel", () => {
         {
           allDay: true,
           endDate: "2026-05-02",
-          id: "evt-shared-space-crash:2026-05-01:shared-space-crash",
+          id: "2026-05-01:shared-space-crash",
           startDate: "2026-05-01",
           title: "Shared-space crash",
         },
@@ -244,7 +244,7 @@ describe("buildDayAriaLabel", () => {
         {
           allDay: true,
           endDate: "2026-05-02",
-          id: "evt-shared-space-crash:2026-05-01:shared-space-crash",
+          id: "2026-05-01:shared-space-crash",
           startDate: "2026-05-01",
           title: "Shared-space crash",
         },
@@ -301,7 +301,7 @@ describe("getWholeHouseDetailLabel", () => {
         {
           allDay: true,
           endDate: "2026-05-02",
-          id: "evt-shared-space-crash:2026-05-01:shared-space-crash",
+          id: "2026-05-01:shared-space-crash",
           startDate: "2026-05-01",
           title: "Shared-space crash",
         },
@@ -339,7 +339,7 @@ describe("getWholeHouseDetailLabel", () => {
         {
           allDay: true,
           endDate: "2026-05-02",
-          id: "evt-shared-space-crash:2026-05-01:shared-space-crash",
+          id: "2026-05-01:shared-space-crash",
           startDate: "2026-05-01",
           title: "Shared-space crash",
         },

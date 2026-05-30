@@ -85,7 +85,6 @@ function getPublicPresenceLabel(
 }
 
 function buildSharedSpaceCrashNote(
-  eventId: string,
   eventDay: string,
 ): DailyAvailability["events"][number] {
   return {
@@ -93,10 +92,16 @@ function buildSharedSpaceCrashNote(
     endDate: formatISO(addDays(parseISO(eventDay), 1), {
       representation: "date",
     }),
-    id: `${eventId}:${eventDay}:shared-space-crash`,
+    id: `${eventDay}:shared-space-crash`,
     startDate: eventDay,
     title: "Shared-space crash",
   };
+}
+
+function hasSharedSpaceCrashNote(day: WorkingDay): boolean {
+  return day.events.some(
+    (event) => event.allDay && event.id.endsWith(":shared-space-crash"),
+  );
 }
 
 export function deriveDailyAvailability(
@@ -231,7 +236,11 @@ export function deriveDailyAvailability(
             day.houseBlockStatus,
             stayRoomStatus,
           );
-          day.events.push(buildSharedSpaceCrashNote(event.id, eventDay));
+
+          if (!hasSharedSpaceCrashNote(day)) {
+            day.events.push(buildSharedSpaceCrashNote(eventDay));
+          }
+
           continue;
         }
 
