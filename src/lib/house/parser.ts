@@ -409,23 +409,6 @@ function fallbackStayParse(
   const stayStatus = inferStayStatus(normalizedTitle);
   const scopeHint = hintParts.find((hint) => !isTentativeHint(hint));
 
-  if (
-    (scopeHint && SHARED_SPACE_RE.test(scopeHint)) ||
-    /\bstay\s+(?:on\s+(?:the\s+)?)?(?:couch|sofa|floor)\b/.test(normalizedTitle)
-  ) {
-    return {
-      rawTitle,
-      normalizedTitle,
-      type: "stay",
-      scope: "shared_space",
-      personId,
-      guestName: extractGuestName(rawTitle, normalizedTitle, personId),
-      stayStatus,
-      visibility: "private",
-      confidence: personId ? 0.91 : 0.74,
-    };
-  }
-
   if (scopeHint && WHOLE_HOUSE_RE.test(scopeHint)) {
     return {
       rawTitle,
@@ -456,6 +439,23 @@ function fallbackStayParse(
       guestName: extractGuestName(rawTitle, normalizedTitle, personId),
       stayStatus,
       roomId: room.id,
+      visibility: "private",
+      confidence: personId ? 0.91 : 0.74,
+    };
+  }
+
+  if (
+    (scopeHint && SHARED_SPACE_RE.test(scopeHint)) ||
+    /\bstay\s+(?:on\s+(?:the\s+)?)?(?:couch|sofa|floor)\b/.test(normalizedTitle)
+  ) {
+    return {
+      rawTitle,
+      normalizedTitle,
+      type: "stay",
+      scope: "shared_space",
+      personId,
+      guestName: extractGuestName(rawTitle, normalizedTitle, personId),
+      stayStatus,
       visibility: "private",
       confidence: personId ? 0.91 : 0.74,
     };

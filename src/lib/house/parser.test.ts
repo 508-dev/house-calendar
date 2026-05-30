@@ -127,6 +127,25 @@ describe("parseEventTitle", () => {
     expect(floor.roomId).toBeUndefined();
   });
 
+  test("matches configured room aliases before shared-space hints", () => {
+    const config = structuredClone(exampleHouseConfig);
+    config.rooms.push({
+      aliases: ["third floor", "sofa room"],
+      id: "third-floor",
+      name: "Third floor",
+    });
+
+    const floorRoom = parseEventTitle("Alex stays (third floor)", config);
+    const sofaRoom = parseEventTitle("Alex stays (sofa room)", config);
+
+    expect(floorRoom.type).toBe("stay");
+    expect(floorRoom.scope).toBe("room");
+    expect(floorRoom.roomId).toBe("third-floor");
+    expect(sofaRoom.type).toBe("stay");
+    expect(sofaRoom.scope).toBe("room");
+    expect(sofaRoom.roomId).toBe("third-floor");
+  });
+
   test("parses templated public housemate travel", () => {
     const parsed = parseEventTitle(
       "Michael out of Japan (Europe)",
