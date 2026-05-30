@@ -10,6 +10,7 @@ const MAYBE_RE = /\bmaybe\b/;
 const OUT_RE = /\b(out|away)\b/;
 const IN_RE = /\bin\b/;
 const WHOLE_HOUSE_RE = /\b(whole house|house)\b/;
+const SHARED_SPACE_RE = /\b(couch|sofa|floor)\b/;
 const NOT_STAYING_SUFFIX_RE =
   /^(.*?)(?:\s*,\s*not staying|\s*\(\s*not staying\s*\))$/i;
 const TENTATIVE_HINT_RE = /^(tentative|maybe)$/i;
@@ -27,7 +28,9 @@ function canonicalizeTitle(title: string): string {
 }
 
 export function normalizeTitle(title: string): string {
-  return canonicalizeTitle(title).replace(/\bstays\b/gi, "stay");
+  return canonicalizeTitle(title)
+    .replace(/\bstays\b/gi, "stay")
+    .replace(/\bcrash(?:es|ing)?\b/gi, "stay");
 }
 
 function extractBracketHint(normalizedTitle: string): string | undefined {
@@ -101,7 +104,9 @@ function extractGuestName(
     return undefined;
   }
 
-  const match = rawTitle.match(/^\s*(.+?)\s+(?:maybe\s+)?stays?\b/i);
+  const match = rawTitle.match(
+    /^\s*(.+?)\s+(?:(?:is|are)\s+)?(?:maybe\s+)?(?:stays?|crash(?:es|ing)?)\b/i,
+  );
   const guestName = match?.[1]?.trim();
 
   return guestName ? guestName : undefined;
@@ -340,6 +345,14 @@ function matchExplicitRule(
           visibility: rule.visibility,
           confidence: 0.97,
         };
+      case "stay.shared_space":
+        return {
+          normalizedTitle,
+          type: "stay",
+          scope: "shared_space",
+          visibility: rule.visibility,
+          confidence: 0.97,
+        };
       case "presence.in": {
         const explicitNotStaying =
           stripNotStayingMarker(normalizedTitle) !== normalizedTitle;
@@ -426,6 +439,23 @@ function fallbackStayParse(
       guestName: extractGuestName(rawTitle, normalizedTitle, personId),
       stayStatus,
       roomId: room.id,
+      visibility: "private",
+      confidence: personId ? 0.91 : 0.74,
+    };
+  }
+
+  if (
+    (scopeHint && SHARED_SPACE_RE.test(scopeHint)) ||
+    /\bstay\s+(?:on\s+(?:the\s+)?)?(?:couch|sofa|floor)\b/.test(normalizedTitle)
+  ) {
+    return {
+      rawTitle,
+      normalizedTitle,
+      type: "stay",
+      scope: "shared_space",
+      personId,
+      guestName: extractGuestName(rawTitle, normalizedTitle, personId),
+      stayStatus,
       visibility: "private",
       confidence: personId ? 0.91 : 0.74,
     };

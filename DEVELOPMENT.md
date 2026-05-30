@@ -82,6 +82,7 @@ Useful config fields to know:
 - `people[].defaultRoomId` sets the default occupied room for parsed `presence.in` events unless the title explicitly says `not staying`
 - `calendarInterpretation.allDayEndDateMode` controls whether imported all-day ICS end dates use standard exclusive semantics or checkout-day semantics for availability
 - `calendarDisplay.timedNotes.enabled` controls whether timed viewer notes appear in the calendar UI; it defaults to `true`
+- Shared-space crash notes from all-day couch, sofa, or floor stay events are not timed notes. They remain visible as generic notes even when timed notes are disabled.
 - `calendarDisplay.timedNotes.showTime` controls whether timed viewer notes show their time range
 - `calendarDisplay.timedNotes.textSource` controls whether timed viewer notes use the event title, description, or both
 - `site.branding.faviconPath` should point at a local asset under `public/`
@@ -303,6 +304,8 @@ two different jobs:
 Recommended patterns:
 
 - Use all-day titles like `Someone stays (guest room)` or `Someone stays (whole house)` for actual overnight occupancy.
+- Use `crashes` as a stay keyword when that matches how you write the event.
+- Use couch, sofa, or floor language for shared-space crashes that should block the whole house without occupying a configured room.
 - Use `maybe stay` or `(tentative)` when the stay is not confirmed.
 - Use housemate presence titles that match your configured rules, such as `Michael (TPE)` or `Michael in Tokyo (not staying)`.
 - Use timed events like `Cleaner 1pm-3:30pm JST` only for logistics you are comfortable showing to trusted viewers.

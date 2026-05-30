@@ -127,6 +127,10 @@ export function describeInterpretation(
       return `${guestPrefix}${stayPrefix}room stay: ${room?.name ?? parsed.roomId}`;
     }
 
+    if (parsed.scope === "shared_space") {
+      return `${guestPrefix}${stayPrefix}shared-space crash; blocks whole house without occupying a room`;
+    }
+
     return `${guestPrefix}${stayPrefix}stay with unknown scope`;
   }
 
@@ -199,6 +203,9 @@ export function buildParsedFieldRows(
 
     if (parsed.scope === "house") {
       rows.push({ label: "Scope", value: "Whole house" });
+    } else if (parsed.scope === "shared_space") {
+      rows.push({ label: "Scope", value: "Shared space" });
+      rows.push({ label: "Room occupancy", value: "No room occupied" });
     } else if (parsed.scope === "room" && room) {
       rows.push({ label: "Room", value: room.name });
     } else if (parsed.scope === "room" && parsed.roomId) {

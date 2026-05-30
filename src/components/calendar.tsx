@@ -96,6 +96,10 @@ function formatDayEventTimeLabel(
   event: DailyAvailability["events"][number],
   timezone: string,
 ): string {
+  if (event.allDay) {
+    return "All day";
+  }
+
   return `${formatTimeInTimeZone(event.startDate, timezone)} - ${formatTimeInTimeZone(
     event.endDate,
     timezone,
@@ -109,7 +113,7 @@ function formatDayEventSummary(
 ): string {
   const text = resolveDayEventText(event, timedNotes.textSource);
 
-  if (!timedNotes.showTime) {
+  if (event.allDay || !timedNotes.showTime) {
     return text;
   }
 
@@ -910,7 +914,7 @@ export function Calendar({
               <div className="mt-2 space-y-1 text-sm">
                 {previewDay.events.slice(0, 3).map((event) => (
                   <div key={event.id}>
-                    {timedNotes.showTime ? (
+                    {timedNotes.showTime && !event.allDay ? (
                       <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-[var(--app-muted)]">
                         {formatDayEventTimeLabel(event, timezone)}
                       </p>
@@ -959,7 +963,7 @@ export function Calendar({
               <div className="mt-2 space-y-1.5">
                 {selectedDay.events.map((event) => (
                   <div key={event.id}>
-                    {timedNotes.showTime ? (
+                    {timedNotes.showTime && !event.allDay ? (
                       <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--app-muted)]">
                         {formatDayEventTimeLabel(event, timezone)}
                       </p>

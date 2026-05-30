@@ -8,6 +8,7 @@ export const shareScopeSchema = z.enum(["view", "request"]);
 export const parserRuleTypeSchema = z.enum([
   "stay.whole_house",
   "stay.room",
+  "stay.shared_space",
   "presence.in",
   "presence.out",
 ]);
@@ -54,6 +55,10 @@ export const parserRuleSchema = z.discriminatedUnion("type", [
     ...parserRuleBaseShape,
     type: z.literal("stay.room"),
     roomId: z.string(),
+  }),
+  z.object({
+    ...parserRuleBaseShape,
+    type: z.literal("stay.shared_space"),
   }),
   z.object({
     ...parserRuleBaseShape,
@@ -175,6 +180,7 @@ export const presenceStateSchema = z.enum(["in", "out", "unknown"]);
 export const parsedScopeSchema = z.enum([
   "house",
   "room",
+  "shared_space",
   "location",
   "unknown",
 ]);
@@ -210,6 +216,7 @@ export const dayPresenceSchema = z.object({
 });
 
 export const dayEventSchema = z.object({
+  allDay: z.boolean().default(false),
   description: z.string().optional(),
   id: z.string(),
   endDate: isoDateTimeSchema,
