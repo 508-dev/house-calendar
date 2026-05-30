@@ -122,6 +122,11 @@ Timed day notes are secondary annotations. They do not participate in stay or
 presence derivation, and they should stay lightweight enough that the app does
 not turn back into a full calendar mirror.
 
+Shared-space crash notes are another narrow annotation: all-day couch, sofa, or
+floor crash events block whole-house availability without occupying a configured
+room. Viewers see only a generic shared-space note, not the raw source title or
+guest details.
+
 For privacy, timed notes only surface when the underlying ICS event is
 effectively public from the feed's perspective. Events marked
 `CLASS:PRIVATE` or `CLASS:CONFIDENTIAL` remain hidden from viewer-facing day

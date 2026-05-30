@@ -93,7 +93,7 @@ export const getViewerPageData = createServerFn({ method: "GET" })
       ? availability
       : availability.map((day) => ({
           ...day,
-          events: [],
+          events: day.events.filter((event) => event.allDay),
         }));
 
     return {

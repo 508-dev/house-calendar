@@ -56,6 +56,56 @@ describe("deriveDailyAvailability", () => {
     expect(days[0]?.status).toBe("unknown");
   });
 
+  test("shared-space crashes block whole-house availability without occupying a room", () => {
+    const days = deriveDailyAvailability(
+      exampleHouseConfig,
+      [
+        rawCalendarEventSchema.parse({
+          id: "evt-shared-space-crash",
+          title: "Charlie crashes on the couch",
+          startDate: "2026-04-19",
+          endDate: "2026-04-21",
+          allDay: true,
+        }),
+      ],
+      "2026-04-19",
+      2,
+    );
+
+    expect(days[0]?.status).toBe("unavailable");
+    expect(days[1]?.status).toBe("unavailable");
+    expect(days[0]?.rooms.every((room) => room.status === "free")).toBeTrue();
+    expect(days[0]?.events).toEqual([
+      {
+        allDay: true,
+        endDate: "2026-04-20",
+        id: "evt-shared-space-crash:2026-04-19:shared-space-crash",
+        startDate: "2026-04-19",
+        title: "Shared-space crash",
+      },
+    ]);
+  });
+
+  test("tentative shared-space crashes tentatively block whole-house availability", () => {
+    const days = deriveDailyAvailability(
+      exampleHouseConfig,
+      [
+        rawCalendarEventSchema.parse({
+          id: "evt-tentative-shared-space-crash",
+          title: "Charlie maybe crashes (sofa)",
+          startDate: "2026-04-19",
+          endDate: "2026-04-20",
+          allDay: true,
+        }),
+      ],
+      "2026-04-19",
+      1,
+    );
+
+    expect(days[0]?.status).toBe("tentative");
+    expect(days[0]?.rooms.every((room) => room.status === "free")).toBeTrue();
+  });
+
   test("marks tentative room stays without promoting them to confirmed occupancy", () => {
     const days = deriveDailyAvailability(
       exampleHouseConfig,
@@ -152,6 +202,7 @@ describe("deriveDailyAvailability", () => {
     expect(days[0]?.status).toBe("available");
     expect(days[0]?.events).toEqual([
       {
+        allDay: false,
         endDate: "2026-04-19T06:30:00.000Z",
         id: "evt-cleaner",
         startDate: "2026-04-19T04:00:00.000Z",

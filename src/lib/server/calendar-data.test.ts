@@ -171,6 +171,7 @@ describe("loadCalendarData", () => {
     expect(result.warnings).toContain("No all-day ICS events were imported.");
     expect(eventDay?.events).toEqual([
       {
+        allDay: false,
         endDate: "2026-04-29T06:30:00.000Z",
         id: "cleaner-1",
         startDate: "2026-04-29T04:00:00.000Z",

@@ -137,6 +137,7 @@ export function buildWeeks(days: DailyAvailability[]): CalendarWeek[] {
 
 export function getDayStatusLabel(day: DailyAvailability): string {
   const hasSingleRoom = day.rooms.length === 1;
+  const hasOccupiedRoom = day.rooms.some((room) => room.status === "occupied");
 
   switch (day.status) {
     case "available":
@@ -146,6 +147,10 @@ export function getDayStatusLabel(day: DailyAvailability): string {
     case "partial":
       return "Partially occupied";
     case "unavailable":
+      if (!hasOccupiedRoom) {
+        return "Whole house unavailable";
+      }
+
       return hasSingleRoom ? "Occupied" : "Whole house occupied";
     case "unknown":
       return "Needs interpretation";
@@ -221,6 +226,20 @@ export function getWholeHouseDetailLabel(day: DailyAvailability): string {
 
   if (day.status === "unknown") {
     return getDayStatusLabel(day);
+  }
+
+  if (
+    day.status === "unavailable" &&
+    day.rooms.every((room) => room.status === "free")
+  ) {
+    return "Whole house unavailable";
+  }
+
+  if (
+    day.status === "tentative" &&
+    day.rooms.every((room) => room.status === "free")
+  ) {
+    return "Whole house tentative";
   }
 
   return formatRoomSummary(day);

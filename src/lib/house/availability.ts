@@ -12,6 +12,7 @@ import {
 
 type WorkingDay = Omit<DailyAvailability, "status"> & {
   hasUnknownStay: boolean;
+  houseBlockStatus: "free" | "tentative" | "occupied";
   presenceRoomStatusByPerson: Map<string, "free" | "tentative" | "occupied">;
   presenceStatesByPerson: Map<string, "in" | "out" | "unknown">;
   rooms: DailyAvailability["rooms"];
@@ -83,6 +84,21 @@ function getPublicPresenceLabel(
   return undefined;
 }
 
+function buildSharedSpaceCrashNote(
+  eventId: string,
+  eventDay: string,
+): DailyAvailability["events"][number] {
+  return {
+    allDay: true,
+    endDate: formatISO(addDays(parseISO(eventDay), 1), {
+      representation: "date",
+    }),
+    id: `${eventId}:${eventDay}:shared-space-crash`,
+    startDate: eventDay,
+    title: "Shared-space crash",
+  };
+}
+
 export function deriveDailyAvailability(
   configInput: HouseConfig,
   eventsInput: RawCalendarEvent[],
@@ -123,6 +139,7 @@ export function deriveDailyAvailability(
       date,
       events: [],
       hasUnknownStay: false,
+      houseBlockStatus: "free" as const,
       rooms: config.rooms.map((room) => ({
         id: room.id,
         name: room.name,
@@ -162,6 +179,7 @@ export function deriveDailyAvailability(
 
       if (day) {
         day.events.push({
+          allDay: false,
           ...(event.description ? { description: event.description } : {}),
           endDate: event.endDate,
           id: event.id,
@@ -205,6 +223,15 @@ export function deriveDailyAvailability(
             ...room,
             status: mergeRoomStatus(room.status, stayRoomStatus),
           }));
+          continue;
+        }
+
+        if (parsed.scope === "shared_space") {
+          day.houseBlockStatus = mergeRoomStatus(
+            day.houseBlockStatus,
+            stayRoomStatus,
+          );
+          day.events.push(buildSharedSpaceCrashNote(event.id, eventDay));
           continue;
         }
 
@@ -323,18 +350,24 @@ export function deriveDailyAvailability(
     const tentativeRooms = rooms.filter(
       (room) => room.status === "tentative",
     ).length;
-    const status = day.hasUnknownStay
-      ? "unknown"
-      : occupiedRooms === 0
-        ? tentativeRooms === 0
-          ? "available"
-          : "tentative"
-        : occupiedRooms === day.rooms.length
-          ? "unavailable"
-          : "partial";
+    const status =
+      day.houseBlockStatus === "occupied"
+        ? "unavailable"
+        : day.hasUnknownStay
+          ? "unknown"
+          : occupiedRooms === 0
+            ? tentativeRooms === 0
+              ? day.houseBlockStatus === "tentative"
+                ? "tentative"
+                : "available"
+              : "tentative"
+            : occupiedRooms === day.rooms.length
+              ? "unavailable"
+              : "partial";
 
     return dailyAvailabilitySchema.parse({
       ...day,
+      houseBlockStatus: undefined,
       rooms,
       status,
     });

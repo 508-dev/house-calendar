@@ -82,6 +82,51 @@ describe("parseEventTitle", () => {
     expect(parsed.confidence).toBe(0.97);
   });
 
+  test("treats crashes as a default stay keyword", () => {
+    const parsed = parseEventTitle(
+      "Charlie crashes (guest room)",
+      exampleHouseConfig,
+    );
+
+    expect(parsed.type).toBe("stay");
+    expect(parsed.scope).toBe("room");
+    expect(parsed.guestName).toBe("Charlie");
+    expect(parsed.roomId).toBe("guest-room");
+  });
+
+  test("parses shared-space crashes without assigning a room", () => {
+    const couch = parseEventTitle(
+      "Charlie crashes on the couch",
+      exampleHouseConfig,
+    );
+    const ongoingCouch = parseEventTitle(
+      "Charlie is crashing on the couch",
+      exampleHouseConfig,
+    );
+    const sofa = parseEventTitle("Charlie crashing (sofa)", exampleHouseConfig);
+    const floor = parseEventTitle(
+      "Charlie crashes on the floor",
+      exampleHouseConfig,
+    );
+
+    expect(couch.type).toBe("stay");
+    expect(couch.scope).toBe("shared_space");
+    expect(couch.guestName).toBe("Charlie");
+    expect(couch.roomId).toBeUndefined();
+    expect(ongoingCouch.type).toBe("stay");
+    expect(ongoingCouch.scope).toBe("shared_space");
+    expect(ongoingCouch.guestName).toBe("Charlie");
+    expect(ongoingCouch.roomId).toBeUndefined();
+    expect(sofa.type).toBe("stay");
+    expect(sofa.scope).toBe("shared_space");
+    expect(sofa.guestName).toBe("Charlie");
+    expect(sofa.roomId).toBeUndefined();
+    expect(floor.type).toBe("stay");
+    expect(floor.scope).toBe("shared_space");
+    expect(floor.guestName).toBe("Charlie");
+    expect(floor.roomId).toBeUndefined();
+  });
+
   test("parses templated public housemate travel", () => {
     const parsed = parseEventTitle(
       "Michael out of Japan (Europe)",

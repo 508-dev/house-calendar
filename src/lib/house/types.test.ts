@@ -46,6 +46,19 @@ describe("houseConfigSchema", () => {
     expect(() => houseConfigSchema.parse(config)).toThrow(/Unknown actorId/);
   });
 
+  test("accepts shared-space stay rules without a room id", () => {
+    const config = structuredClone(exampleHouseConfig);
+    config.rules.push({
+      type: "stay.shared_space",
+      match: "crashes? \\((couch|sofa|floor)\\)",
+      visibility: "private",
+    });
+
+    expect(houseConfigSchema.parse(config).rules.at(-1)).toMatchObject({
+      type: "stay.shared_space",
+    });
+  });
+
   test("rejects unknown visible housemate ids", () => {
     const config = structuredClone(exampleHouseConfig);
     config.visibleHousemateIds = ["michael", "ghost"];

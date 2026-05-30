@@ -73,6 +73,17 @@ const parsedTentativePresenceEvent: ParsedCalendarEvent = {
   visibility: "public",
 };
 
+const parsedSharedSpaceStayEvent: ParsedCalendarEvent = {
+  confidence: 0.74,
+  guestName: "Charlie",
+  normalizedTitle: "charlie stay on the couch",
+  rawTitle: "Charlie crashes on the couch",
+  scope: "shared_space",
+  stayStatus: "confirmed",
+  type: "stay",
+  visibility: "private",
+};
+
 describe("admin timed event diagnostics", () => {
   test("formats timed event ranges in the house timezone", () => {
     expect(formatEventRange(buildTimedRawEvent(), houseConfig.timezone)).toBe(
@@ -137,6 +148,51 @@ describe("admin timed event diagnostics", () => {
         visibility: "public",
       }),
     ).toBe("Michael: Tentative in (taipei)");
+  });
+
+  test("describes shared-space stay interpretations explicitly", () => {
+    expect(
+      describeInterpretation(parsedSharedSpaceStayEvent, houseConfig, {
+        allDay: true,
+        endDate: "2026-04-30",
+        id: "shared-space-1",
+        startDate: "2026-04-29",
+        title: "Charlie crashes on the couch",
+        visibility: "public",
+      }),
+    ).toBe(
+      "Charlie: shared-space crash; blocks whole house without occupying a room",
+    );
+  });
+
+  test("shows shared-space stay rows without assigning a room", () => {
+    expect(
+      buildParsedFieldRows(parsedSharedSpaceStayEvent, houseConfig, {
+        allDay: true,
+        endDate: "2026-04-30",
+        id: "shared-space-1",
+        startDate: "2026-04-29",
+        title: "Charlie crashes on the couch",
+        visibility: "public",
+      }),
+    ).toEqual([
+      {
+        label: "Guest name",
+        value: "Charlie",
+      },
+      {
+        label: "Stay status",
+        value: "Confirmed",
+      },
+      {
+        label: "Scope",
+        value: "Shared space",
+      },
+      {
+        label: "Room occupancy",
+        value: "No room occupied",
+      },
+    ]);
   });
 
   test("shows presence status rows for tentative presence", () => {
