@@ -1,15 +1,17 @@
-<!--- Provide a general summary of your changes in the Title above. -->
+## Summary
 
-<!--- Optionally prefix with feat/chore/fix: -->
+-
 
-## Description
+## Validation
 
-<!--- Describe your changes in detail. What component does this change affect? -->
+- [ ] Ran the narrowest relevant checks.
+- [ ] Updated docs or examples when behavior changed.
 
-## Related Issue
+## Risk
 
-<!--- If there are any related issues or Notion tasks, please link here, or delete this section or write N/A. -->
+- [ ] Low risk, isolated change.
+- [ ] Needs reviewer attention for privacy, auth, migrations, deploy behavior, secrets, or cross-house data flow.
 
-## How Has This Been Tested?
+## Screenshots
 
-<!--- Please describe how you tested or plan to test your changes. -->
+Add screenshots or recordings for UI changes.

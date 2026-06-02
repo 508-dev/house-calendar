@@ -1,41 +1,46 @@
-name: "\U0001F41E Bug Report"
-description: Create a bug report to help us improve
-title: "bug: "
+name: Bug Report
+description: Report a reproducible problem.
+title: "[Bug] "
+labels:
+  - bug
 body:
   - type: textarea
+    id: summary
     attributes:
-      label: Provide environment information
-      description: |
-        Run these commands in your project root and paste the results in a code block:
-        ```bash
-        bunx envinfo --system --binaries
-        bun --version
-        ```
-        If you already use Node.js tooling, you can also run:
-        ```bash
-        npx envinfo --system --binaries
-        ```
+      label: Summary
+      description: What happened?
     validations:
       required: true
   - type: textarea
+    id: expected
     attributes:
-      label: Describe the bug
-      description: A clear and concise description of the bug, as well as what you expected to happen when encountering it.
-    validations:
-      required: true
-  - type: input
-    attributes:
-      label: Link to reproduction
-      description: Please provide a link to a reproduction of the bug. Issues without a reproduction repo may be ignored.
+      label: Expected Behavior
+      description: What did you expect to happen?
     validations:
       required: true
   - type: textarea
+    id: reproduce
     attributes:
-      label: To reproduce
-      description: Describe how to reproduce your bug. Steps, code snippets, reproduction repos etc.
+      label: Steps To Reproduce
+      description: Include the smallest reliable reproduction you have.
+      placeholder: |
+        1. Run ...
+        2. Open ...
+        3. See ...
     validations:
       required: true
   - type: textarea
+    id: environment
     attributes:
-      label: Additional information
-      description: Add any other information related to the bug here, screenshots if applicable.
+      label: Environment
+      description: OS, browser, runtime versions, commit SHA, deployment environment, or other relevant context.
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs Or Screenshots
+      description: Paste short logs or attach screenshots. Do not include secrets.
+      render: text
+    validations:
+      required: false
