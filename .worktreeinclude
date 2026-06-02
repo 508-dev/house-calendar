@@ -1,2 +1,5 @@
 .env
+.env.local
+.env.development
+.env.development.local
 config/config.json

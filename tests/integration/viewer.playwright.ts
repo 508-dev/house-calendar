@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { format, parse } from "date-fns";
 
 function selectedDatePanel(page: Page) {
   return page.locator("aside section").filter({ hasText: "Selected date" });
@@ -17,6 +18,14 @@ function firstLine(text: string): string {
       .map((line) => line.trim())
       .find(Boolean) ?? ""
   );
+}
+
+function panelDateFromAriaLabel(ariaLabel: string | null): string {
+  const match = ariaLabel?.match(/^([A-Z][a-z]+ \d{1,2}, 20\d{2})\./);
+
+  expect(match?.[1]).toBeTruthy();
+
+  return format(parse(match?.[1] ?? "", "MMMM d, yyyy", new Date()), "MMM d");
 }
 
 async function waitForCalendarHydration(page: Page, siteId = "tokyo") {
@@ -110,8 +119,7 @@ test("clicking a calendar day opens the day preview and updates selection", asyn
   await expect(calendarDay).toBeVisible();
 
   const ariaLabel = await calendarDay.getAttribute("aria-label");
-  const selectedDate = ariaLabel?.match(/^([A-Z][a-z]+ \d{1,2}), 20\d{2}/)?.[1];
-  expect(selectedDate).toBeTruthy();
+  const selectedDate = panelDateFromAriaLabel(ariaLabel);
 
   await calendarDay.click();
 
