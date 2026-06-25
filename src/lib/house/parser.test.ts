@@ -146,6 +146,29 @@ describe("parseEventTitle", () => {
     expect(sofaRoom.roomId).toBe("third-floor");
   });
 
+  test("matches compact room aliases in stay hints", () => {
+    const parsed = parseEventTitle(
+      "Charles Chen stays (guestroom)",
+      exampleHouseConfig,
+    );
+
+    expect(parsed.type).toBe("stay");
+    expect(parsed.scope).toBe("room");
+    expect(parsed.guestName).toBe("Charles Chen");
+    expect(parsed.roomId).toBe("guest-room");
+  });
+
+  test("matches shortened room suffix aliases in stay hints", () => {
+    const config = structuredClone(exampleHouseConfig);
+    config.rooms[0]?.aliases.push("master room");
+    const parsed = parseEventTitle("Sam M stays (master)", config);
+
+    expect(parsed.type).toBe("stay");
+    expect(parsed.scope).toBe("room");
+    expect(parsed.guestName).toBe("Sam M");
+    expect(parsed.roomId).toBe("my-room");
+  });
+
   test("parses templated public housemate travel", () => {
     const parsed = parseEventTitle(
       "Michael out of Japan (Europe)",

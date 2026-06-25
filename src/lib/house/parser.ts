@@ -55,6 +55,29 @@ function isNotStayingHint(value: string): boolean {
   return value.trim().toLowerCase() === "not staying";
 }
 
+function roomHintKeys(value: string): string[] {
+  const normalizedValue = normalizeTitle(value);
+  const compactValue = normalizedValue.replace(/[^a-z0-9]+/g, "");
+  const keys = new Set([normalizedValue, compactValue]);
+  const withoutRoomSuffix = normalizedValue.replace(/\s+room$/i, "").trim();
+
+  if (withoutRoomSuffix !== normalizedValue && withoutRoomSuffix.length >= 4) {
+    keys.add(withoutRoomSuffix);
+    keys.add(withoutRoomSuffix.replace(/[^a-z0-9]+/g, ""));
+  }
+
+  return [...keys].filter(Boolean);
+}
+
+function roomMatchesHint(
+  room: HouseConfig["rooms"][number],
+  hintKeys: Set<string>,
+): boolean {
+  return [room.name, ...room.aliases]
+    .flatMap(roomHintKeys)
+    .some((key) => hintKeys.has(key));
+}
+
 function inferStayStatus(normalizedTitle: string): "confirmed" | "tentative" {
   return MAYBE_STAY_RE.test(normalizedTitle) ||
     extractBracketHints(normalizedTitle).some(isTentativeHint)
@@ -423,10 +446,9 @@ function fallbackStayParse(
     };
   }
 
+  const roomHintKeySet = new Set(hintParts.flatMap(roomHintKeys));
   const room = config.rooms.find((candidate) =>
-    [candidate.name, ...candidate.aliases]
-      .map((value) => normalizeTitle(value))
-      .some((value) => hintParts.includes(value)),
+    roomMatchesHint(candidate, roomHintKeySet),
   );
 
   if (room) {
