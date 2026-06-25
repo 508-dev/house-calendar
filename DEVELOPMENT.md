@@ -240,6 +240,11 @@ Reset the existing admin password and revoke all admin sessions:
 bun run admin:reset-password -- --email owner@example.com --password 'new strong password'
 ```
 
+When you are already signed in, you can also change the admin password from the
+selected house admin page. The in-app flow requires the current password,
+stores a new password hash, revokes other admin sessions, and keeps the current
+browser signed in with a replacement session.
+
 Minimal local setup flow:
 
 1. Run `bun run db:start`

@@ -41,6 +41,11 @@ const directSetupInputSchema = loginInputSchema.extend({
   password: z.string().min(ADMIN_PASSWORD_MIN_LENGTH),
 });
 
+const passwordChangeInputSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(ADMIN_PASSWORD_MIN_LENGTH),
+});
+
 export type AdminSession = {
   email: string;
   expiresAt: Date;
@@ -89,6 +94,17 @@ type AdminPasswordResetResult =
       email: string;
       ok: true;
       revokedSessionCount: number;
+    };
+
+type AdminPasswordChangeResult =
+  | {
+      error: string;
+      ok: false;
+      requiresLogin?: boolean;
+    }
+  | {
+      ok: true;
+      session: AdminSession;
     };
 
 type AuthDb = ReturnType<typeof getDb>;
@@ -772,5 +788,107 @@ export async function resetAdminPassword(input: {
     }
 
     return { error: "Admin password reset failed.", ok: false };
+  }
+}
+
+export async function changeAdminPassword(input: {
+  currentPassword: string;
+  currentSessionToken: string | undefined;
+  newPassword: string;
+}): Promise<AdminPasswordChangeResult> {
+  if (!serverEnv.DATABASE_URL) {
+    return { error: "DATABASE_URL is not configured.", ok: false };
+  }
+
+  if (!input.currentSessionToken) {
+    return {
+      error: "Admin session has expired. Sign in again.",
+      ok: false,
+      requiresLogin: true,
+    };
+  }
+
+  const parsed = passwordChangeInputSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return {
+      error:
+        parsed.error.flatten().fieldErrors.newPassword?.[0] ??
+        "Enter your current password and a new password of at least 10 characters.",
+      ok: false,
+    };
+  }
+
+  await ensureAuthSchema();
+  const db = getDb();
+  const currentSessionTokenHash = hashSessionToken(input.currentSessionToken);
+  const newPasswordHash = hashPassword(parsed.data.newPassword);
+
+  try {
+    const changeResult = await db.transaction(async (transactionDb) => {
+      const [user] = await transactionDb
+        .select({
+          email: adminUsers.email,
+          id: adminUsers.id,
+          passwordHash: adminUsers.passwordHash,
+        })
+        .from(adminSessions)
+        .innerJoin(adminUsers, eq(adminUsers.id, adminSessions.userId))
+        .where(
+          and(
+            eq(adminSessions.tokenHash, currentSessionTokenHash),
+            gt(adminSessions.expiresAt, new Date()),
+          ),
+        )
+        .limit(1);
+
+      if (!user) {
+        throw Object.assign(
+          new Error("Admin session has expired. Sign in again."),
+          {
+            requiresLogin: true,
+          },
+        );
+      }
+
+      if (!verifyPassword(parsed.data.currentPassword, user.passwordHash)) {
+        throw new Error("Current password is incorrect.");
+      }
+
+      await transactionDb
+        .update(adminUsers)
+        .set({
+          passwordHash: newPasswordHash,
+          updatedAt: new Date(),
+        })
+        .where(eq(adminUsers.id, user.id));
+
+      await transactionDb
+        .delete(adminSessions)
+        .where(eq(adminSessions.userId, user.id));
+
+      const session = await createAdminSession(
+        user.id,
+        user.email,
+        transactionDb,
+      );
+
+      return { session };
+    });
+
+    return {
+      ok: true,
+      session: changeResult.session,
+    };
+  } catch (error) {
+    if (error instanceof Error) {
+      return {
+        error: error.message,
+        ok: false,
+        requiresLogin: "requiresLogin" in error && error.requiresLogin === true,
+      };
+    }
+
+    return { error: "Admin password change failed.", ok: false };
   }
 }

@@ -1,6 +1,8 @@
 import { createFileRoute, notFound, redirect } from "@tanstack/react-router";
 import { SiteTabs } from "@/components/site-tabs";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { formatDateTimeRangeInTimeZone } from "@/lib/house/date";
 import type {
   HouseConfig,
@@ -344,6 +346,75 @@ function AdminSitePage() {
                   className="h-auto rounded-full border-[color:var(--app-card-border)] bg-white/75 px-4 py-2 text-sm font-semibold"
                 >
                   Sign out
+                </Button>
+              </form>
+            </section>
+
+            <section className="rounded-[2rem] border border-[color:var(--app-card-border)] bg-[color:var(--app-card)] p-6 shadow-[var(--app-shadow)]">
+              <p className="font-[family-name:var(--font-mono)] text-xs uppercase tracking-[0.28em] text-[var(--app-muted)]">
+                Account security
+              </p>
+              <h2 className="mt-3 text-xl font-semibold">Change password</h2>
+              <p className="mt-2 text-sm leading-6 text-[var(--app-muted)]">
+                Updates the global admin password and revokes other active admin
+                sessions.
+              </p>
+
+              <form
+                action={`/admin/${data.site.id}/password`}
+                method="post"
+                className="mt-5 space-y-4"
+              >
+                <div>
+                  <Label htmlFor="currentPassword" className="mb-2">
+                    Current password
+                  </Label>
+                  <Input
+                    autoComplete="current-password"
+                    className="h-auto rounded-2xl border-[color:var(--app-card-border)] bg-white/90 px-4 py-3 text-base focus-visible:border-[color:var(--app-accent)]"
+                    id="currentPassword"
+                    name="currentPassword"
+                    required
+                    type="password"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="newPassword" className="mb-2">
+                    New password
+                  </Label>
+                  <Input
+                    autoComplete="new-password"
+                    className="h-auto rounded-2xl border-[color:var(--app-card-border)] bg-white/90 px-4 py-3 text-base focus-visible:border-[color:var(--app-accent)]"
+                    id="newPassword"
+                    minLength={10}
+                    name="newPassword"
+                    required
+                    type="password"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="confirmNewPassword" className="mb-2">
+                    Confirm new password
+                  </Label>
+                  <Input
+                    autoComplete="new-password"
+                    className="h-auto rounded-2xl border-[color:var(--app-card-border)] bg-white/90 px-4 py-3 text-base focus-visible:border-[color:var(--app-accent)]"
+                    id="confirmNewPassword"
+                    minLength={10}
+                    name="confirmNewPassword"
+                    required
+                    type="password"
+                  />
+                </div>
+
+                <Button
+                  type="submit"
+                  variant="outline"
+                  className="h-auto rounded-full border-[color:var(--app-card-border)] bg-white/75 px-4 py-2 text-sm font-semibold"
+                >
+                  Change password
                 </Button>
               </form>
             </section>
