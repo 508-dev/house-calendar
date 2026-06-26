@@ -107,6 +107,7 @@ function resolvePort({
   explicitPortEnvName,
   fallbackPortEnvName,
   ignoreFallbackExplicitPort = false,
+  ignorePrimaryExplicitPort = false,
   pathKey,
   preferredOffset,
   span,
@@ -120,12 +121,15 @@ function resolvePort({
   explicitPortEnvName: string;
   fallbackPortEnvName?: string;
   ignoreFallbackExplicitPort?: boolean;
+  ignorePrimaryExplicitPort?: boolean;
   pathKey: string;
   preferredOffset?: number;
   span: number;
   worktreeRoot: string;
 }): Omit<PortResolution, "port"> & { port?: number } {
-  const primaryExplicitPortValue = env[explicitPortEnvName];
+  const primaryExplicitPortValue = ignorePrimaryExplicitPort
+    ? undefined
+    : env[explicitPortEnvName];
   const primaryExplicitPort = parsePortLike(
     primaryExplicitPortValue,
     explicitPortEnvName,
@@ -376,7 +380,7 @@ export async function resolveWorktreePorts({
   }
 
   const pathKey = worktreePathKey(worktreeRoot);
-  const ignoreFallbackExplicitPort = conductorBasePort !== undefined;
+  const ignoreExplicitPort = conductorBasePort !== undefined;
 
   const appResolution = resolvePort({
     basePort: conductorBasePort,
@@ -386,7 +390,8 @@ export async function resolveWorktreePorts({
     env,
     explicitPortEnvName: WORKTREE_DEV_PORT_ENV,
     fallbackPortEnvName: "PORT",
-    ignoreFallbackExplicitPort,
+    ignoreFallbackExplicitPort: ignoreExplicitPort,
+    ignorePrimaryExplicitPort: ignoreExplicitPort,
     pathKey,
     preferredOffset: conductorBasePort === undefined ? undefined : 0,
     span,
@@ -406,7 +411,8 @@ export async function resolveWorktreePorts({
     env,
     explicitPortEnvName: WORKTREE_POSTGRES_PORT_ENV,
     fallbackPortEnvName: "POSTGRES_PORT",
-    ignoreFallbackExplicitPort,
+    ignoreFallbackExplicitPort: ignoreExplicitPort,
+    ignorePrimaryExplicitPort: ignoreExplicitPort,
     pathKey,
     preferredOffset: conductorBasePort === undefined ? undefined : 1,
     span,

@@ -181,7 +181,7 @@ describe("worktree ports", () => {
     );
   });
 
-  test("reports explicit overrides even when CONDUCTOR_PORT is also set", async () => {
+  test("ignores explicit override env when CONDUCTOR_PORT is set", async () => {
     const conductorPort = 62020;
     const bundle = await resolveWorktreePorts({
       worktreeRoot: join(tmpdir(), "house-calendar-test-explicit-summary"),
@@ -195,8 +195,10 @@ describe("worktree ports", () => {
 
     const summary = formatWorktreePortSummary(bundle);
 
+    expect(bundle.app.port).toBe(conductorPort);
+    expect(bundle.postgres.port).toBe(conductorPort + 1);
     expect(summary).toContain(
-      `Port source: explicit override (app 62040, Postgres 62041; CONDUCTOR_PORT=${conductorPort} (${conductorPort}-${conductorPort + CONDUCTOR_PORT_SPAN - 1}))`,
+      `Port source: CONDUCTOR_PORT=${conductorPort} (${conductorPort}-${conductorPort + CONDUCTOR_PORT_SPAN - 1})`,
     );
   });
 
@@ -282,7 +284,7 @@ describe("worktree ports", () => {
     );
   });
 
-  test("preserves explicit worktree ports over CONDUCTOR_PORT", async () => {
+  test("keeps stale generated worktree ports from overriding CONDUCTOR_PORT", async () => {
     const bundle = await resolveWorktreePorts({
       worktreeRoot: join(tmpdir(), "house-calendar-test-conductor-explicit"),
       env: {
@@ -293,8 +295,8 @@ describe("worktree ports", () => {
       },
     });
 
-    expect(bundle.app.port).toBe(62040);
-    expect(bundle.postgres.port).toBe(62041);
+    expect(bundle.app.port).toBe(62020);
+    expect(bundle.postgres.port).toBe(62021);
   });
 
   test("keeps generated worktree ports stable when Conductor env is loaded again", async () => {
