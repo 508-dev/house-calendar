@@ -1,12 +1,12 @@
 import { spawn } from "node:child_process";
 import {
   appUrl,
+  buildWorktreeEnv,
   resolveWorktreePorts,
-  writeWorktreeEnvFiles,
 } from "./worktree-ports";
 
 const bundle = await resolveWorktreePorts({ worktreeRoot: process.cwd() });
-writeWorktreeEnvFiles(bundle);
+const env = buildWorktreeEnv(bundle, process.env);
 
 console.log(`Starting TanStack Start on ${appUrl(bundle)}`);
 console.log(
@@ -26,12 +26,7 @@ const child = spawn(
   ],
   {
     cwd: bundle.worktreeRoot,
-    env: {
-      ...process.env,
-      DATABASE_URL: bundle.databaseUrl,
-      PORT: String(bundle.app.port),
-      POSTGRES_PORT: String(bundle.postgres.port),
-    },
+    env,
     stdio: "inherit",
   },
 );

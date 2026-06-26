@@ -95,7 +95,8 @@ export const Route = createFileRoute("/admin/$siteId/password")({
         }
 
         const response = redirectToAdmin(request, params.siteId, {
-          message: "Admin password changed. Other admin sessions were revoked.",
+          passwordMessage:
+            "Admin password changed. Other admin sessions were revoked.",
         });
         setAdminSessionCookie(response, result.session);
         return response;

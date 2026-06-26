@@ -37,6 +37,7 @@ function createPasswordChangeDb(options: {
   currentPasswordHash: string;
   email?: string;
   failOnUpdate?: boolean;
+  skipPasswordUpdate?: boolean;
   userId?: number;
 }) {
   const operations = {
@@ -74,13 +75,21 @@ function createPasswordChangeDb(options: {
     }),
     update: () => ({
       set: (values: { passwordHash?: string }) => ({
-        where: async () => {
-          operations.events.push("updatePassword");
-          if (options.failOnUpdate) {
-            throw new Error("database constraint detail");
-          }
-          operations.updatedPasswordHash = values.passwordHash ?? null;
-        },
+        where: () => ({
+          returning: async () => {
+            operations.events.push("updatePassword");
+            if (options.failOnUpdate) {
+              throw new Error("database constraint detail");
+            }
+
+            if (options.skipPasswordUpdate) {
+              return [];
+            }
+
+            operations.updatedPasswordHash = values.passwordHash ?? null;
+            return [{ id: user.id }];
+          },
+        }),
       }),
     }),
   };
@@ -196,6 +205,31 @@ describe("changeAdminPassword", () => {
     expect(operations.insertedSession).toBeNull();
   });
 
+  test("rejects a new password that matches the current password", async () => {
+    serverEnv.DATABASE_URL = "postgres://test";
+    installFakeSql();
+    const operations = createPasswordChangeDb({
+      currentPasswordHash: hashPassword("current password"),
+    });
+
+    const result = await changeAdminPassword({
+      adminSecurity: baseAdminSecurity(),
+      currentPassword: "current password",
+      currentSessionToken: "current-session-token",
+      newPassword: "current password",
+    });
+
+    expect(result).toEqual({
+      error: "New password must be different from the current password.",
+      ok: false,
+      passwordErrorField: "newPassword",
+      requiresLogin: false,
+    });
+    expect(operations.updatedPasswordHash).toBeNull();
+    expect(operations.deletedSessions).toBe(false);
+    expect(operations.insertedSession).toBeNull();
+  });
+
   test("requires an active session before changing the password", async () => {
     serverEnv.DATABASE_URL = "postgres://test";
     installFakeSql();
@@ -214,6 +248,32 @@ describe("changeAdminPassword", () => {
     expect(result).toEqual({
       error: "Admin session has expired. Sign in again.",
       ok: false,
+      requiresLogin: true,
+    });
+    expect(operations.updatedPasswordHash).toBeNull();
+    expect(operations.deletedSessions).toBe(false);
+    expect(operations.insertedSession).toBeNull();
+  });
+
+  test("aborts session rotation when the verified password hash is stale", async () => {
+    serverEnv.DATABASE_URL = "postgres://test";
+    installFakeSql();
+    const operations = createPasswordChangeDb({
+      currentPasswordHash: hashPassword("current password"),
+      skipPasswordUpdate: true,
+    });
+
+    const result = await changeAdminPassword({
+      adminSecurity: baseAdminSecurity(),
+      currentPassword: "current password",
+      currentSessionToken: "current-session-token",
+      newPassword: "new strong password",
+    });
+
+    expect(result).toEqual({
+      error: "Admin password changed. Sign in again.",
+      ok: false,
+      passwordErrorField: undefined,
       requiresLogin: true,
     });
     expect(operations.updatedPasswordHash).toBeNull();

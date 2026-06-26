@@ -101,7 +101,7 @@ type AdminPasswordChangeResult =
   | {
       error: string;
       ok: false;
-      passwordErrorField?: "currentPassword";
+      passwordErrorField?: "currentPassword" | "newPassword";
       requiresLogin?: boolean;
     }
   | {
@@ -180,11 +180,11 @@ function isAdminAlreadyCompleteError(error: unknown): boolean {
 function userFacingAuthError(
   message: string,
   options?: {
-    passwordErrorField?: "currentPassword";
+    passwordErrorField?: "currentPassword" | "newPassword";
     requiresLogin?: boolean;
   },
 ): Error & {
-  passwordErrorField?: "currentPassword";
+  passwordErrorField?: "currentPassword" | "newPassword";
   requiresLogin?: boolean;
   userFacing: true;
 } {
@@ -196,7 +196,7 @@ function userFacingAuthError(
 }
 
 function isUserFacingAuthError(error: unknown): error is Error & {
-  passwordErrorField?: "currentPassword";
+  passwordErrorField?: "currentPassword" | "newPassword";
   requiresLogin?: boolean;
   userFacing: true;
 } {
@@ -906,6 +906,15 @@ export async function changeAdminPassword(input: {
       });
     }
 
+    if (verifyPassword(parsed.data.newPassword, user.passwordHash)) {
+      throw userFacingAuthError(
+        "New password must be different from the current password.",
+        {
+          passwordErrorField: "newPassword",
+        },
+      );
+    }
+
     if (passwordChangeThrottleEnabled) {
       await clearAdminLoginFailures({
         email: user.email,
@@ -916,13 +925,25 @@ export async function changeAdminPassword(input: {
     const changeResult = await db.transaction(async (transactionDb) => {
       const newPasswordHash = hashPassword(parsed.data.newPassword);
 
-      await transactionDb
+      const updatedUsers = await transactionDb
         .update(adminUsers)
         .set({
           passwordHash: newPasswordHash,
           updatedAt: new Date(),
         })
-        .where(eq(adminUsers.id, user.id));
+        .where(
+          and(
+            eq(adminUsers.id, user.id),
+            eq(adminUsers.passwordHash, user.passwordHash),
+          ),
+        )
+        .returning({ id: adminUsers.id });
+
+      if (updatedUsers.length === 0) {
+        throw userFacingAuthError("Admin password changed. Sign in again.", {
+          requiresLogin: true,
+        });
+      }
 
       await transactionDb
         .delete(adminSessions)

@@ -1,5 +1,4 @@
-import { bootstrapAdminForDevelopment } from "../src/lib/server/auth";
-import { closeDb, withDatabaseStartupRetry } from "../src/lib/server/db";
+import { buildWorktreeEnv, resolveWorktreePorts } from "./worktree-ports";
 
 type ParsedArgs = {
   email: string;
@@ -15,6 +14,8 @@ Options:
   --password    Admin password to hash and store
   --help        Show this message
 `.trim();
+
+let closeDbAfterMain: (() => Promise<void>) | undefined;
 
 function getFlagValue(
   argv: string[],
@@ -69,7 +70,14 @@ export function parseAdminBootstrapDevArgs(
 
 async function main() {
   const { email, password } = parseAdminBootstrapDevArgs();
-  const result = await withDatabaseStartupRetry(
+  const bundle = await resolveWorktreePorts({ worktreeRoot: process.cwd() });
+  Object.assign(process.env, buildWorktreeEnv(bundle, process.env));
+  const { bootstrapAdminForDevelopment } = await import(
+    "../src/lib/server/auth"
+  );
+  const dbModule = await import("../src/lib/server/db");
+  closeDbAfterMain = dbModule.closeDb;
+  const result = await dbModule.withDatabaseStartupRetry(
     () =>
       bootstrapAdminForDevelopment({
         email,
@@ -107,6 +115,6 @@ if (import.meta.main) {
       process.exit(1);
     })
     .finally(async () => {
-      await closeDb();
+      await closeDbAfterMain?.();
     });
 }

@@ -463,23 +463,41 @@ function formatDotenvValue(value: string): string {
   return JSON.stringify(value);
 }
 
-function buildEnvFileContents(
+export function buildWorktreeEnv(
   bundle: WorktreePortBundle,
   env: NodeJS.ProcessEnv,
-): string {
+): NodeJS.ProcessEnv {
   const postgresUser = env.POSTGRES_USER || "house_calendar";
   const postgresPassword = env.POSTGRES_PASSWORD || "house_calendar";
   const postgresDb = env.POSTGRES_DB || "house_calendar";
 
+  return {
+    ...env,
+    COMPOSE_PROJECT_NAME: bundle.projectName,
+    DATABASE_URL: bundle.databaseUrl,
+    PORT: String(bundle.app.port),
+    POSTGRES_DB: postgresDb,
+    POSTGRES_PASSWORD: postgresPassword,
+    POSTGRES_PORT: String(bundle.postgres.port),
+    POSTGRES_USER: postgresUser,
+  };
+}
+
+function buildEnvFileContents(
+  bundle: WorktreePortBundle,
+  env: NodeJS.ProcessEnv,
+): string {
+  const worktreeEnv = buildWorktreeEnv(bundle, env);
+
   return [
-    `COMPOSE_PROJECT_NAME=${formatDotenvValue(bundle.projectName)}`,
-    `PORT=${bundle.app.port}`,
-    `POSTGRES_PORT=${bundle.postgres.port}`,
-    `POSTGRES_DB=${formatDotenvValue(postgresDb)}`,
-    `POSTGRES_USER=${formatDotenvValue(postgresUser)}`,
-    `POSTGRES_PASSWORD=${formatDotenvValue(postgresPassword)}`,
+    `COMPOSE_PROJECT_NAME=${formatDotenvValue(worktreeEnv.COMPOSE_PROJECT_NAME ?? "")}`,
+    `PORT=${worktreeEnv.PORT}`,
+    `POSTGRES_PORT=${worktreeEnv.POSTGRES_PORT}`,
+    `POSTGRES_DB=${formatDotenvValue(worktreeEnv.POSTGRES_DB ?? "")}`,
+    `POSTGRES_USER=${formatDotenvValue(worktreeEnv.POSTGRES_USER ?? "")}`,
+    `POSTGRES_PASSWORD=${formatDotenvValue(worktreeEnv.POSTGRES_PASSWORD ?? "")}`,
     `WORKTREE_PORT_OFFSET=${bundle.app.offset}`,
-    `DATABASE_URL=${formatDotenvValue(bundle.databaseUrl)}`,
+    `DATABASE_URL=${formatDotenvValue(worktreeEnv.DATABASE_URL ?? "")}`,
     "",
   ].join("\n");
 }

@@ -17,12 +17,17 @@ type AdminSitePageData = Extract<
   { kind: "ready" }
 >;
 
-type PasswordErrorField = "confirmNewPassword" | "currentPassword";
+type PasswordErrorField =
+  | "confirmNewPassword"
+  | "currentPassword"
+  | "newPassword";
 
 function parsePasswordErrorField(
   value: unknown,
 ): PasswordErrorField | undefined {
-  return value === "confirmNewPassword" || value === "currentPassword"
+  return value === "confirmNewPassword" ||
+    value === "currentPassword" ||
+    value === "newPassword"
     ? value
     : undefined;
 }
@@ -61,6 +66,10 @@ export const Route = createFileRoute("/admin/$siteId")({
         ? search.passwordError
         : undefined,
     passwordErrorField: parsePasswordErrorField(search.passwordErrorField),
+    passwordMessage:
+      typeof search.passwordMessage === "string"
+        ? search.passwordMessage
+        : undefined,
     sync: typeof search.sync === "string" ? search.sync : undefined,
   }),
 });
@@ -275,13 +284,15 @@ export function buildParsedFieldRows(
 
 function AdminSitePage() {
   const data = Route.useLoaderData() as AdminSitePageData | undefined;
-  const { error, message, passwordError, passwordErrorField } =
+  const { error, message, passwordError, passwordErrorField, passwordMessage } =
     Route.useSearch();
   const [clientPasswordError, setClientPasswordError] = useState<
     string | undefined
   >();
   const currentPasswordError =
     passwordErrorField === "currentPassword" ? passwordError : undefined;
+  const newPasswordError =
+    passwordErrorField === "newPassword" ? passwordError : undefined;
   const confirmNewPasswordError =
     clientPasswordError ??
     (passwordErrorField === "confirmNewPassword" ? passwordError : undefined);
@@ -413,6 +424,7 @@ function AdminSitePage() {
               </p>
               <div className="mt-4">
                 <Notice kind="error" message={passwordFormError} />
+                <Notice kind="info" message={passwordMessage} />
               </div>
 
               <form
@@ -452,6 +464,10 @@ function AdminSitePage() {
                     New password
                   </Label>
                   <Input
+                    aria-describedby={
+                      newPasswordError ? "newPasswordError" : undefined
+                    }
+                    aria-invalid={newPasswordError ? true : undefined}
                     onInput={(event) => {
                       const confirmNewPassword =
                         event.currentTarget.form?.elements.namedItem(
@@ -472,6 +488,14 @@ function AdminSitePage() {
                     required
                     type="password"
                   />
+                  {newPasswordError ? (
+                    <p
+                      id="newPasswordError"
+                      className="mt-2 text-sm font-medium text-[color:var(--app-danger)]"
+                    >
+                      {newPasswordError}
+                    </p>
+                  ) : null}
                 </div>
 
                 <div>
