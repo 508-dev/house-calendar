@@ -13,7 +13,7 @@ If you want the product overview, start with [README.md](./README.md). If you wa
 - Drizzle is the ORM and typed query layer for Postgres
 - Per-worktree ports are derived by `scripts/worktree-ports.ts`, and app ports skip browser-blocked ports such as `5060` and `5061`
 - In Conductor workspaces, `CONDUCTOR_PORT` is treated as the first port in the workspace's assigned 10-port range; the app uses that port and Postgres uses the next port in the range
-- `bun run db:start`, `bun run admin:bootstrap-dev`, and `bun dev` pass derived local env directly instead of relying on `.env`
+- `bun run db:*`, `bun run admin:*`, and `bun dev` pass derived local env directly instead of relying on `.env`
 - `WORKTREE_DEV_PORT` and `WORKTREE_POSTGRES_PORT` are manual overrides only when `CONDUCTOR_PORT` is unset; generated `.env` files do not write them
 
 ## Prerequisites
