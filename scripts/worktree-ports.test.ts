@@ -110,6 +110,8 @@ describe("worktree ports", () => {
     expect(envFile).toContain('POSTGRES_DB="house calendar"');
     expect(envFile).toContain('POSTGRES_USER="user name"');
     expect(envFile).toContain('POSTGRES_PASSWORD="p@ss:/#word"');
+    expect(envFile).toContain(`WORKTREE_DEV_PORT=${bundle.app.port}`);
+    expect(envFile).toContain(`WORKTREE_POSTGRES_PORT=${bundle.postgres.port}`);
   });
 
   test("uses the Conductor 10-port range when CONDUCTOR_PORT is set", async () => {
@@ -153,6 +155,54 @@ describe("worktree ports", () => {
 
     expect(bundle.app.port).toBe(62040);
     expect(bundle.postgres.port).toBe(62041);
+  });
+
+  test("keeps generated worktree ports stable when Conductor env is loaded again", async () => {
+    const worktreeRoot = join(
+      tmpdir(),
+      "house-calendar-test-conductor-generated-env",
+    );
+    const conductorPort = 62050;
+    const firstBundle = await resolveWorktreePorts({
+      worktreeRoot,
+      env: {
+        CONDUCTOR_PORT: String(conductorPort),
+        NODE_ENV: "test",
+      },
+    });
+
+    writeWorktreeEnvFiles(firstBundle, {
+      CONDUCTOR_PORT: String(conductorPort),
+      NODE_ENV: "test",
+    });
+
+    const generatedEnv = Object.fromEntries(
+      readFileSync(join(worktreeRoot, ".env"), "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => {
+          const [key, ...valueParts] = line.split("=");
+          const rawValue = valueParts.join("=");
+          return [
+            key,
+            rawValue.startsWith('"') ? JSON.parse(rawValue) : rawValue,
+          ];
+        }),
+    );
+    const secondBundle = await resolveWorktreePorts({
+      worktreeRoot,
+      env: {
+        ...generatedEnv,
+        CONDUCTOR_PORT: String(conductorPort),
+        NODE_ENV: "test",
+      },
+    });
+
+    expect(secondBundle.app.port).toBe(firstBundle.app.port);
+    expect(secondBundle.postgres.port).toBe(firstBundle.postgres.port);
+    expect(secondBundle.databaseUrl).toContain(
+      `@127.0.0.1:${firstBundle.postgres.port}/`,
+    );
   });
 
   test("probes forward when the hashed port is already occupied", async () => {

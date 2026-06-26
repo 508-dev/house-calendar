@@ -390,6 +390,8 @@ function buildEnvFileContents(
     `POSTGRES_DB=${formatDotenvValue(postgresDb)}`,
     `POSTGRES_USER=${formatDotenvValue(postgresUser)}`,
     `POSTGRES_PASSWORD=${formatDotenvValue(postgresPassword)}`,
+    `WORKTREE_DEV_PORT=${bundle.app.port}`,
+    `WORKTREE_POSTGRES_PORT=${bundle.postgres.port}`,
     `WORKTREE_PORT_OFFSET=${bundle.app.offset}`,
     `DATABASE_URL=${formatDotenvValue(bundle.databaseUrl)}`,
     "",
