@@ -81,6 +81,17 @@ export type AdminLoginProtectionCheck =
       recordFailure: boolean;
     };
 
+export type AdminPasswordChangeProtectionCheck =
+  | {
+      keys: LoginAttemptKeys;
+      ok: true;
+    }
+  | {
+      error: string;
+      keys: LoginAttemptKeys;
+      ok: false;
+    };
+
 export function hasRecentThresholdCrossing({
   limit,
   lockoutMs,
@@ -799,6 +810,54 @@ export async function checkAdminLoginProtection({
   }
 
   return { challengeRequired, challengeRequiredAfterFailure, keys, ok: true };
+}
+
+export async function checkAdminPasswordChangeProtection({
+  adminSecurity,
+  email,
+  request,
+}: {
+  adminSecurity: AdminSecurityConfig;
+  email: string;
+  request?: Request;
+}): Promise<AdminPasswordChangeProtectionCheck> {
+  const config = getLoginProtectionConfig(adminSecurity);
+
+  if (
+    isAdminLoginProtectionFullyDisabled(adminSecurity) ||
+    !config.throttleEnabled ||
+    !serverEnv.DATABASE_URL
+  ) {
+    return {
+      keys: {},
+      ok: true,
+    };
+  }
+
+  const keys = buildAttemptKeys(email, request);
+  await ensureLoginProtectionSchema();
+  await maybeCleanupOldAttempts(config);
+
+  const failures = await getFailureCounts(keys, config);
+  const { lockedOut } = getLoginProtectionDecision({
+    challengeAfterFailures: config.challengeAfterFailures,
+    challengeMode: "off",
+    failures,
+    throttleEnabled: config.throttleEnabled,
+  });
+
+  if (lockedOut) {
+    return {
+      error: "Too many login attempts. Wait a while and try again.",
+      keys,
+      ok: false,
+    };
+  }
+
+  return {
+    keys,
+    ok: true,
+  };
 }
 
 export async function recordAdminLoginFailure({

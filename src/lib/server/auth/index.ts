@@ -13,6 +13,7 @@ import {
 } from "./bootstrap-code";
 import {
   checkAdminLoginProtection,
+  checkAdminPasswordChangeProtection,
   clearAdminLoginFailures,
   delayAfterFailedAdminLogin,
   isAdminLoginProtectionFullyDisabled,
@@ -172,6 +173,24 @@ function isAdminAlreadyCompleteError(error: unknown): boolean {
     (message) =>
       message.includes("admin_users_singleton_idx") ||
       message.includes("duplicate key value violates unique constraint"),
+  );
+}
+
+function userFacingAuthError(
+  message: string,
+  options?: { requiresLogin?: boolean },
+): Error & { requiresLogin?: boolean; userFacing: true } {
+  return Object.assign(new Error(message), {
+    requiresLogin: options?.requiresLogin,
+    userFacing: true as const,
+  });
+}
+
+function isUserFacingAuthError(
+  error: unknown,
+): error is Error & { requiresLogin?: boolean; userFacing: true } {
+  return (
+    error instanceof Error && "userFacing" in error && error.userFacing === true
   );
 }
 
@@ -792,9 +811,11 @@ export async function resetAdminPassword(input: {
 }
 
 export async function changeAdminPassword(input: {
+  adminSecurity: AdminSecurityConfig;
   currentPassword: string;
   currentSessionToken: string | undefined;
   newPassword: string;
+  request?: Request;
 }): Promise<AdminPasswordChangeResult> {
   if (!serverEnv.DATABASE_URL) {
     return { error: "DATABASE_URL is not configured.", ok: false };
@@ -823,38 +844,65 @@ export async function changeAdminPassword(input: {
   const db = getDb();
   const currentSessionTokenHash = hashSessionToken(input.currentSessionToken);
   const newPasswordHash = hashPassword(parsed.data.newPassword);
+  const protectionFullyDisabled = isAdminLoginProtectionFullyDisabled(
+    input.adminSecurity,
+  );
 
   try {
+    const [user] = await db
+      .select({
+        email: adminUsers.email,
+        id: adminUsers.id,
+        passwordHash: adminUsers.passwordHash,
+      })
+      .from(adminSessions)
+      .innerJoin(adminUsers, eq(adminUsers.id, adminSessions.userId))
+      .where(
+        and(
+          eq(adminSessions.tokenHash, currentSessionTokenHash),
+          gt(adminSessions.expiresAt, new Date()),
+        ),
+      )
+      .limit(1);
+
+    if (!user) {
+      throw userFacingAuthError("Admin session has expired. Sign in again.", {
+        requiresLogin: true,
+      });
+    }
+
+    const protection = await checkAdminPasswordChangeProtection({
+      adminSecurity: input.adminSecurity,
+      email: user.email,
+      request: input.request,
+    });
+
+    if (!protection.ok) {
+      throw userFacingAuthError(protection.error);
+    }
+
+    if (!verifyPassword(parsed.data.currentPassword, user.passwordHash)) {
+      if (!protectionFullyDisabled) {
+        await recordAdminLoginFailure({
+          adminSecurity: input.adminSecurity,
+          email: user.email,
+          keys: protection.keys,
+          reason: "invalid_current_password",
+        });
+        await delayAfterFailedAdminLogin(input.adminSecurity);
+      }
+
+      throw userFacingAuthError("Current password is incorrect.");
+    }
+
+    if (!protectionFullyDisabled) {
+      await clearAdminLoginFailures({
+        email: user.email,
+        keys: protection.keys,
+      });
+    }
+
     const changeResult = await db.transaction(async (transactionDb) => {
-      const [user] = await transactionDb
-        .select({
-          email: adminUsers.email,
-          id: adminUsers.id,
-          passwordHash: adminUsers.passwordHash,
-        })
-        .from(adminSessions)
-        .innerJoin(adminUsers, eq(adminUsers.id, adminSessions.userId))
-        .where(
-          and(
-            eq(adminSessions.tokenHash, currentSessionTokenHash),
-            gt(adminSessions.expiresAt, new Date()),
-          ),
-        )
-        .limit(1);
-
-      if (!user) {
-        throw Object.assign(
-          new Error("Admin session has expired. Sign in again."),
-          {
-            requiresLogin: true,
-          },
-        );
-      }
-
-      if (!verifyPassword(parsed.data.currentPassword, user.passwordHash)) {
-        throw new Error("Current password is incorrect.");
-      }
-
       await transactionDb
         .update(adminUsers)
         .set({
@@ -881,11 +929,11 @@ export async function changeAdminPassword(input: {
       session: changeResult.session,
     };
   } catch (error) {
-    if (error instanceof Error) {
+    if (isUserFacingAuthError(error)) {
       return {
         error: error.message,
         ok: false,
-        requiresLogin: "requiresLogin" in error && error.requiresLogin === true,
+        requiresLogin: error.requiresLogin === true,
       };
     }
 

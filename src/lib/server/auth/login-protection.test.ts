@@ -3,6 +3,7 @@ import type { AdminSecurityConfig } from "@/lib/config/config";
 import { serverEnv } from "../env";
 import {
   checkAdminLoginProtection,
+  checkAdminPasswordChangeProtection,
   getLoginProtectionDecision,
   hasRecentThresholdCrossing,
   isAdminLoginProtectionFullyDisabled,
@@ -377,5 +378,74 @@ describe("checkAdminLoginProtection", () => {
       keys: {},
       ok: true,
     });
+  });
+});
+
+describe("checkAdminPasswordChangeProtection", () => {
+  test("uses existing login throttling without requiring a challenge token", async () => {
+    serverEnv.ADMIN_LOGIN_IDENTIFIER_PEPPER = "test-login-identifier-pepper";
+    serverEnv.DATABASE_URL = "postgres://test";
+
+    const sqlCalls: string[] = [];
+    const fakeSql = async <T = unknown>(
+      strings: TemplateStringsArray,
+      ..._values: unknown[]
+    ): Promise<T> => {
+      const query = strings.join("?");
+      sqlCalls.push(query);
+
+      if (
+        query.includes("select exists") &&
+        query.includes("candidate.email_hash")
+      ) {
+        return [{ value: true }] as T;
+      }
+
+      if (query.includes("select exists")) {
+        return [{ value: false }] as T;
+      }
+
+      return [] as T;
+    };
+
+    globalThis.__houseCalendarSql =
+      fakeSql as unknown as typeof globalThis.__houseCalendarSql;
+    globalThis.__houseCalendarDb = {
+      delete: () => ({
+        where: async () => undefined,
+      }),
+      select: () => ({
+        from: () => ({
+          where: async () => [{ value: 2 }],
+        }),
+      }),
+    } as unknown as typeof globalThis.__houseCalendarDb;
+
+    const result = await checkAdminPasswordChangeProtection({
+      adminSecurity: {
+        ...baseAdminSecurity(),
+        loginChallenge: {
+          afterFailures: 1,
+          mode: "always",
+          provider: "turnstile",
+        },
+        loginThrottle: {
+          ...baseAdminSecurity().loginThrottle,
+          maxEmailFailures: 2,
+        },
+      },
+      email: "admin@example.com",
+    });
+
+    expect(sqlCalls.some((query) => query.includes("select exists"))).toBe(
+      true,
+    );
+    expect(result.ok).toBe(false);
+
+    if (!result.ok) {
+      expect(result.error).toBe(
+        "Too many login attempts. Wait a while and try again.",
+      );
+    }
   });
 });

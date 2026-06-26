@@ -69,9 +69,11 @@ export const Route = createFileRoute("/admin/$siteId/password")({
         }
 
         const result = await changeAdminPassword({
+          adminSecurity: appConfig.adminSecurity,
           currentPassword: String(formData.get("currentPassword") ?? ""),
           currentSessionToken,
           newPassword,
+          request,
         });
 
         if (!result.ok) {
