@@ -443,7 +443,7 @@ async function hasRecentThresholdCrossingInDb({
   }
 
   const sql = getSql();
-  const lockoutStart = new Date(nowMs - lockoutMs);
+  const lockoutStartIso = new Date(nowMs - lockoutMs).toISOString();
 
   if (keyColumn === "emailHash") {
     const [row] = await sql<{ value: boolean }[]>`
@@ -452,7 +452,7 @@ async function hasRecentThresholdCrossingInDb({
         from admin_login_attempts candidate
         where candidate.email_hash = ${keyHash}
           and candidate.reason <> 'locked'
-          and candidate.occurred_at > ${lockoutStart}
+          and candidate.occurred_at > ${lockoutStartIso}::timestamptz
           and (
             select count(*)
             from admin_login_attempts attempt
@@ -474,7 +474,7 @@ async function hasRecentThresholdCrossingInDb({
         from admin_login_attempts candidate
         where candidate.email_ip_hash = ${keyHash}
           and candidate.reason <> 'locked'
-          and candidate.occurred_at > ${lockoutStart}
+          and candidate.occurred_at > ${lockoutStartIso}::timestamptz
           and (
             select count(*)
             from admin_login_attempts attempt
@@ -495,7 +495,7 @@ async function hasRecentThresholdCrossingInDb({
       from admin_login_attempts candidate
       where candidate.client_ip_hash = ${keyHash}
         and candidate.reason <> 'locked'
-        and candidate.occurred_at > ${lockoutStart}
+        and candidate.occurred_at > ${lockoutStartIso}::timestamptz
         and (
           select count(*)
           from admin_login_attempts attempt

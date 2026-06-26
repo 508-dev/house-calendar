@@ -270,12 +270,14 @@ describe("checkAdminLoginProtection", () => {
     serverEnv.DATABASE_URL = "postgres://test";
 
     const sqlCalls: string[] = [];
+    const sqlValues: unknown[] = [];
     const fakeSql = async <T = unknown>(
       strings: TemplateStringsArray,
-      ..._values: unknown[]
+      ...values: unknown[]
     ): Promise<T> => {
       const query = strings.join("?");
       sqlCalls.push(query);
+      sqlValues.push(...values);
 
       if (
         query.includes("select exists") &&
@@ -318,6 +320,7 @@ describe("checkAdminLoginProtection", () => {
     expect(sqlCalls.some((query) => query.includes("select exists"))).toBe(
       true,
     );
+    expect(sqlValues.some((value) => value instanceof Date)).toBe(false);
     expect(result.ok).toBe(false);
 
     if (!result.ok) {
