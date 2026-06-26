@@ -58,21 +58,17 @@ function AdminSetupPage() {
   const data = Route.useLoaderData();
   const { error } = Route.useSearch();
 
+  const canSetup =
+    data.authState.databaseConfigured && data.authState.bootstrapCodeReady;
+
   return (
-    <main className="min-h-screen px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mx-auto grid max-w-5xl gap-8 lg:grid-cols-[1.1fr_0.9fr]">
-        <Card className="rounded-[2rem] border border-[color:var(--app-card-border)] bg-[color:var(--app-card)] p-6 shadow-[var(--app-shadow)] ring-0 sm:p-8">
+    <main className="flex min-h-screen items-center px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto w-full max-w-lg">
+        <Card className="rounded-lg border border-[color:var(--app-card-border)] bg-[color:var(--app-card)] p-6 shadow-[var(--app-shadow)] ring-0 sm:p-8">
           <p className="font-[family-name:var(--font-mono)] text-xs uppercase tracking-[0.28em] text-[var(--app-muted)]">
             Admin setup
           </p>
-          <h1 className="mt-3 text-4xl font-semibold tracking-[-0.05em]">
-            Bootstrap the owner account
-          </h1>
-          <p className="mt-4 max-w-2xl text-base leading-7 text-[var(--app-muted)]">
-            This deployment stays single-tenant. First-run setup creates one
-            admin user with a required email address and password. A one-time
-            bootstrap code must be generated from the CLI before setup can run.
-          </p>
+          <h1 className="mt-3 text-3xl font-semibold">Create admin account</h1>
 
           <div className="mt-6 space-y-4">
             <ErrorBanner message={error} />
@@ -83,17 +79,15 @@ function AdminSetupPage() {
 
             {!data.authState.bootstrapCodeReady ? (
               <ErrorBanner>
-                <p>No valid bootstrap code exists yet.</p>
+                <p>Generate a setup code first.</p>
                 <code className="mt-2 block w-fit rounded-lg bg-white/80 px-2 py-1 font-[family-name:var(--font-mono)] text-xs text-[color:var(--app-danger)]">
                   bun run admin:bootstrap-code
                 </code>
-                <p className="mt-2">Run it and use the printed code here.</p>
               </ErrorBanner>
             ) : null}
           </div>
 
-          {data.authState.databaseConfigured &&
-          data.authState.bootstrapCodeReady ? (
+          {canSetup ? (
             <form
               action="/admin/setup/submit"
               method="post"
@@ -149,19 +143,6 @@ function AdminSetupPage() {
               </Button>
             </form>
           ) : null}
-        </Card>
-
-        <Card className="rounded-[2rem] border border-[color:var(--app-card-border)] bg-[color:var(--app-card)] p-6 shadow-[var(--app-shadow)] ring-0 sm:p-8">
-          <p className="font-[family-name:var(--font-mono)] text-xs uppercase tracking-[0.28em] text-[var(--app-muted)]">
-            What this does
-          </p>
-          <ul className="mt-5 grid gap-3 text-sm leading-6 text-[var(--app-muted)]">
-            <li>Consumes a one-time setup code stored only by hash.</li>
-            <li>Creates the single admin user for this deployment.</li>
-            <li>Stores the admin email in Postgres, not in env.</li>
-            <li>Starts normal password-based admin login after setup.</li>
-            <li>Keeps email delivery optional for now.</li>
-          </ul>
         </Card>
       </div>
     </main>
