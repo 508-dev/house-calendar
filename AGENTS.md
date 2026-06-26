@@ -80,6 +80,7 @@ After acting:
 - shadcn/ui is installed for shared React UI primitives.
 - Per-worktree ports are derived by `scripts/worktree-ports.ts`, and app ports skip browser-blocked ports such as `5060` and `5061`.
 - In Conductor workspaces, `CONDUCTOR_PORT` is the first port in a 10-port range assigned to the workspace; generated app and Postgres ports should stay inside that range unless explicit `WORKTREE_*_PORT` overrides are set.
+- Generated `.env` files must not write `WORKTREE_DEV_PORT` or `WORKTREE_POSTGRES_PORT`; those variables are manual overrides and stale values can override a future `CONDUCTOR_PORT` assignment.
 - `bun dev` already handles writing `.env` and starting Vite on the derived port.
 
 Use these commands instead of improvising:

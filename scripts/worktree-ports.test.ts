@@ -127,8 +127,8 @@ describe("worktree ports", () => {
     expect(envFile).toContain('POSTGRES_DB="house calendar"');
     expect(envFile).toContain('POSTGRES_USER="user name"');
     expect(envFile).toContain('POSTGRES_PASSWORD="p@ss:/#word"');
-    expect(envFile).toContain(`WORKTREE_DEV_PORT=${bundle.app.port}`);
-    expect(envFile).toContain(`WORKTREE_POSTGRES_PORT=${bundle.postgres.port}`);
+    expect(envFile).not.toContain("WORKTREE_DEV_PORT=");
+    expect(envFile).not.toContain("WORKTREE_POSTGRES_PORT=");
   });
 
   test("uses stable offsets in the Conductor 10-port range when CONDUCTOR_PORT is set", async () => {
@@ -240,7 +240,7 @@ describe("worktree ports", () => {
     }
   });
 
-  test("keeps generated ports stable when Conductor env is loaded again", async () => {
+  test("does not persist generated Conductor ports as explicit overrides", async () => {
     const worktreeRoot = join(
       tmpdir(),
       "house-calendar-test-conductor-generated-env",
@@ -262,19 +262,23 @@ describe("worktree ports", () => {
     const generatedEnv = parseDotenv(
       readFileSync(join(worktreeRoot, ".env"), "utf8"),
     );
+    expect(generatedEnv.WORKTREE_DEV_PORT).toBeUndefined();
+    expect(generatedEnv.WORKTREE_POSTGRES_PORT).toBeUndefined();
+
+    const nextConductorPort = conductorPort + CONDUCTOR_PORT_SPAN;
     const secondBundle = await resolveWorktreePorts({
       worktreeRoot,
       env: {
         ...generatedEnv,
-        CONDUCTOR_PORT: String(conductorPort),
+        CONDUCTOR_PORT: String(nextConductorPort),
         NODE_ENV: "test",
       },
     });
 
-    expect(secondBundle.app.port).toBe(firstBundle.app.port);
-    expect(secondBundle.postgres.port).toBe(firstBundle.postgres.port);
+    expect(secondBundle.app.port).toBe(nextConductorPort);
+    expect(secondBundle.postgres.port).toBe(nextConductorPort + 1);
     expect(secondBundle.databaseUrl).toContain(
-      `@127.0.0.1:${firstBundle.postgres.port}/`,
+      `@127.0.0.1:${nextConductorPort + 1}/`,
     );
   });
 
@@ -339,6 +343,8 @@ describe("worktree ports", () => {
     expect(secondBundle.databaseUrl).toContain(
       `@127.0.0.1:${firstBundle.postgres.port}/`,
     );
+    expect(generatedEnv.WORKTREE_DEV_PORT).toBeUndefined();
+    expect(generatedEnv.WORKTREE_POSTGRES_PORT).toBeUndefined();
   });
 
   test("probes forward when the hashed port is already occupied", async () => {

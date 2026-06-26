@@ -14,6 +14,7 @@ If you want the product overview, start with [README.md](./README.md). If you wa
 - Per-worktree ports are derived by `scripts/worktree-ports.ts`, and app ports skip browser-blocked ports such as `5060` and `5061`
 - In Conductor workspaces, `CONDUCTOR_PORT` is treated as the first port in the workspace's assigned 10-port range; the app uses that port and Postgres uses the next port in the range unless explicit `WORKTREE_*_PORT` overrides are set
 - `bun dev` writes `.env` for the current worktree and starts Vite on the derived port
+- Generated `.env` files do not write `WORKTREE_DEV_PORT` or `WORKTREE_POSTGRES_PORT`; those names are reserved for manual overrides so stale generated files cannot override a future `CONDUCTOR_PORT` assignment
 
 ## Prerequisites
 
