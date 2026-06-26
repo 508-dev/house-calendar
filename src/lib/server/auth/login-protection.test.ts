@@ -390,12 +390,14 @@ describe("checkAdminPasswordChangeProtection", () => {
     serverEnv.DATABASE_URL = "postgres://test";
 
     const sqlCalls: string[] = [];
+    const sqlValues: unknown[] = [];
     const fakeSql = async <T = unknown>(
       strings: TemplateStringsArray,
-      ..._values: unknown[]
+      ...values: unknown[]
     ): Promise<T> => {
       const query = strings.join("?");
       sqlCalls.push(query);
+      sqlValues.push(...values);
 
       if (
         query.includes("select exists") &&
@@ -443,12 +445,62 @@ describe("checkAdminPasswordChangeProtection", () => {
     expect(sqlCalls.some((query) => query.includes("select exists"))).toBe(
       true,
     );
+    expect(sqlValues.some((value) => value instanceof Date)).toBe(false);
     expect(result.ok).toBe(false);
 
     if (!result.ok) {
       expect(result.error).toBe(
-        "Too many login attempts. Wait a while and try again.",
+        "Too many password change attempts. Wait a while and try again.",
       );
+    }
+  });
+
+  test("keeps attempt keys when login challenge is enabled without throttling", async () => {
+    serverEnv.ADMIN_LOGIN_IDENTIFIER_PEPPER = "test-login-identifier-pepper";
+    serverEnv.DATABASE_URL = "postgres://test";
+
+    globalThis.__houseCalendarSql = (async <T = unknown>(
+      strings: TemplateStringsArray,
+    ): Promise<T> => {
+      const query = strings.join("?");
+
+      if (query.includes("select exists")) {
+        return [{ value: false }] as T;
+      }
+
+      return [] as T;
+    }) as unknown as typeof globalThis.__houseCalendarSql;
+    globalThis.__houseCalendarDb = {
+      delete: () => ({
+        where: async () => undefined,
+      }),
+      select: () => ({
+        from: () => ({
+          where: async () => [{ value: 0 }],
+        }),
+      }),
+    } as unknown as typeof globalThis.__houseCalendarDb;
+
+    const result = await checkAdminPasswordChangeProtection({
+      adminSecurity: {
+        ...baseAdminSecurity(),
+        loginChallenge: {
+          afterFailures: 1,
+          mode: "always",
+          provider: "turnstile",
+        },
+        loginThrottle: {
+          ...baseAdminSecurity().loginThrottle,
+          enabled: false,
+        },
+      },
+      email: "admin@example.com",
+    });
+
+    expect(result.ok).toBe(true);
+
+    if (result.ok) {
+      expect(typeof result.keys.emailHash).toBe("string");
     }
   });
 });

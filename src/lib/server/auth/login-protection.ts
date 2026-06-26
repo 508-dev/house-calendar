@@ -825,7 +825,6 @@ export async function checkAdminPasswordChangeProtection({
 
   if (
     isAdminLoginProtectionFullyDisabled(adminSecurity) ||
-    !config.throttleEnabled ||
     !serverEnv.DATABASE_URL
   ) {
     return {
@@ -843,12 +842,12 @@ export async function checkAdminPasswordChangeProtection({
     challengeAfterFailures: config.challengeAfterFailures,
     challengeMode: "off",
     failures,
-    throttleEnabled: config.throttleEnabled,
+    throttleEnabled: config.throttleEnabled || config.challengeMode !== "off",
   });
 
   if (lockedOut) {
     return {
-      error: "Too many login attempts. Wait a while and try again.",
+      error: "Too many password change attempts. Wait a while and try again.",
       keys,
       ok: false,
     };

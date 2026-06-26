@@ -1,4 +1,5 @@
 import { createFileRoute, notFound, redirect } from "@tanstack/react-router";
+import { type FormEvent, useState } from "react";
 import { SiteTabs } from "@/components/site-tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,6 +46,10 @@ export const Route = createFileRoute("/admin/$siteId")({
   validateSearch: (search: Record<string, unknown>) => ({
     error: typeof search.error === "string" ? search.error : undefined,
     message: typeof search.message === "string" ? search.message : undefined,
+    passwordError:
+      typeof search.passwordError === "string"
+        ? search.passwordError
+        : undefined,
     sync: typeof search.sync === "string" ? search.sync : undefined,
   }),
 });
@@ -96,6 +101,26 @@ export function formatEventRange(
 
 function formatConfidence(confidence: number): string {
   return `${Math.round(confidence * 100)}% confidence`;
+}
+
+function getPasswordChangeFieldError(
+  error: string | undefined,
+): { field: "confirmNewPassword" | "currentPassword"; message: string } | null {
+  if (error === "Current password is incorrect.") {
+    return {
+      field: "currentPassword",
+      message: error,
+    };
+  }
+
+  if (error === "New passwords do not match.") {
+    return {
+      field: "confirmNewPassword",
+      message: error,
+    };
+  }
+
+  return null;
 }
 
 export function describeInterpretation(
@@ -259,10 +284,50 @@ export function buildParsedFieldRows(
 
 function AdminSitePage() {
   const data = Route.useLoaderData() as AdminSitePageData | undefined;
-  const { error, message } = Route.useSearch();
+  const { error, message, passwordError } = Route.useSearch();
+  const [clientPasswordError, setClientPasswordError] = useState<
+    string | undefined
+  >();
+  const passwordFieldError = getPasswordChangeFieldError(passwordError);
+  const currentPasswordError =
+    passwordFieldError?.field === "currentPassword"
+      ? passwordFieldError.message
+      : undefined;
+  const confirmNewPasswordError =
+    clientPasswordError ??
+    (passwordFieldError?.field === "confirmNewPassword"
+      ? passwordFieldError.message
+      : undefined);
+  const passwordFormError =
+    passwordError && !passwordFieldError ? passwordError : undefined;
 
   if (!data) {
     return null;
+  }
+
+  function handlePasswordChangeSubmit(event: FormEvent<HTMLFormElement>): void {
+    const form = event.currentTarget;
+    const newPassword = form.elements.namedItem("newPassword");
+    const confirmNewPassword = form.elements.namedItem("confirmNewPassword");
+
+    if (
+      !(newPassword instanceof HTMLInputElement) ||
+      !(confirmNewPassword instanceof HTMLInputElement)
+    ) {
+      return;
+    }
+
+    confirmNewPassword.setCustomValidity("");
+    setClientPasswordError(undefined);
+
+    if (newPassword.value === confirmNewPassword.value) {
+      return;
+    }
+
+    event.preventDefault();
+    confirmNewPassword.setCustomValidity("New passwords do not match.");
+    setClientPasswordError("New passwords do not match.");
+    confirmNewPassword.reportValidity();
   }
 
   return (
@@ -279,8 +344,8 @@ function AdminSitePage() {
               {data.site.houseName} control room
             </h1>
             <p className="mt-4 max-w-2xl text-base leading-7 text-[var(--app-muted)]">
-              Password auth is global for this deployment, while sync, parser
-              diagnostics, and availability remain scoped to the selected house.
+              Sync, parser diagnostics, and availability controls are scoped to
+              the selected house.
             </p>
 
             <div className="mt-6 space-y-4">
@@ -356,20 +421,28 @@ function AdminSitePage() {
               </p>
               <h2 className="mt-3 text-xl font-semibold">Change password</h2>
               <p className="mt-2 text-sm leading-6 text-[var(--app-muted)]">
-                Updates the global admin password and revokes other active admin
+                Updates the admin password and revokes other active admin
                 sessions.
               </p>
+              <div className="mt-4">
+                <Notice kind="error" message={passwordFormError} />
+              </div>
 
               <form
                 action={`/admin/${data.site.id}/password`}
                 method="post"
                 className="mt-5 space-y-4"
+                onSubmit={handlePasswordChangeSubmit}
               >
                 <div>
                   <Label htmlFor="currentPassword" className="mb-2">
                     Current password
                   </Label>
                   <Input
+                    aria-describedby={
+                      currentPasswordError ? "currentPasswordError" : undefined
+                    }
+                    aria-invalid={currentPasswordError ? true : undefined}
                     autoComplete="current-password"
                     className="h-auto rounded-2xl border-[color:var(--app-card-border)] bg-white/90 px-4 py-3 text-base focus-visible:border-[color:var(--app-accent)]"
                     id="currentPassword"
@@ -377,6 +450,14 @@ function AdminSitePage() {
                     required
                     type="password"
                   />
+                  {currentPasswordError ? (
+                    <p
+                      id="currentPasswordError"
+                      className="mt-2 text-sm font-medium text-[color:var(--app-danger)]"
+                    >
+                      {currentPasswordError}
+                    </p>
+                  ) : null}
                 </div>
 
                 <div>
@@ -384,6 +465,18 @@ function AdminSitePage() {
                     New password
                   </Label>
                   <Input
+                    onInput={(event) => {
+                      const confirmNewPassword =
+                        event.currentTarget.form?.elements.namedItem(
+                          "confirmNewPassword",
+                        );
+
+                      if (confirmNewPassword instanceof HTMLInputElement) {
+                        confirmNewPassword.setCustomValidity("");
+                      }
+
+                      setClientPasswordError(undefined);
+                    }}
                     autoComplete="new-password"
                     className="h-auto rounded-2xl border-[color:var(--app-card-border)] bg-white/90 px-4 py-3 text-base focus-visible:border-[color:var(--app-accent)]"
                     id="newPassword"
@@ -399,14 +492,32 @@ function AdminSitePage() {
                     Confirm new password
                   </Label>
                   <Input
+                    aria-describedby={
+                      confirmNewPasswordError
+                        ? "confirmNewPasswordError"
+                        : undefined
+                    }
+                    aria-invalid={confirmNewPasswordError ? true : undefined}
                     autoComplete="new-password"
                     className="h-auto rounded-2xl border-[color:var(--app-card-border)] bg-white/90 px-4 py-3 text-base focus-visible:border-[color:var(--app-accent)]"
                     id="confirmNewPassword"
                     minLength={10}
                     name="confirmNewPassword"
+                    onInput={(event) => {
+                      event.currentTarget.setCustomValidity("");
+                      setClientPasswordError(undefined);
+                    }}
                     required
                     type="password"
                   />
+                  {confirmNewPasswordError ? (
+                    <p
+                      id="confirmNewPasswordError"
+                      className="mt-2 text-sm font-medium text-[color:var(--app-danger)]"
+                    >
+                      {confirmNewPasswordError}
+                    </p>
+                  ) : null}
                 </div>
 
                 <Button

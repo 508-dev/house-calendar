@@ -843,7 +843,6 @@ export async function changeAdminPassword(input: {
   await ensureAuthSchema();
   const db = getDb();
   const currentSessionTokenHash = hashSessionToken(input.currentSessionToken);
-  const newPasswordHash = hashPassword(parsed.data.newPassword);
   const protectionFullyDisabled = isAdminLoginProtectionFullyDisabled(
     input.adminSecurity,
   );
@@ -903,6 +902,8 @@ export async function changeAdminPassword(input: {
     }
 
     const changeResult = await db.transaction(async (transactionDb) => {
+      const newPasswordHash = hashPassword(parsed.data.newPassword);
+
       await transactionDb
         .update(adminUsers)
         .set({
