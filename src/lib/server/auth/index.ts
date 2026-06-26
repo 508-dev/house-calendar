@@ -43,8 +43,13 @@ const directSetupInputSchema = loginInputSchema.extend({
 });
 
 const passwordChangeInputSchema = z.object({
-  currentPassword: z.string().min(1),
-  newPassword: z.string().min(ADMIN_PASSWORD_MIN_LENGTH),
+  currentPassword: z.string().min(1, "Enter your current password."),
+  newPassword: z
+    .string()
+    .min(
+      ADMIN_PASSWORD_MIN_LENGTH,
+      "New password must be at least 10 characters.",
+    ),
 });
 
 export type AdminSession = {
@@ -843,11 +848,20 @@ export async function changeAdminPassword(input: {
   const parsed = passwordChangeInputSchema.safeParse(input);
 
   if (!parsed.success) {
+    const fieldErrors = parsed.error.flatten().fieldErrors;
+    const passwordErrorField = fieldErrors.currentPassword?.[0]
+      ? "currentPassword"
+      : fieldErrors.newPassword?.[0]
+        ? "newPassword"
+        : undefined;
+
     return {
       error:
-        parsed.error.flatten().fieldErrors.newPassword?.[0] ??
+        fieldErrors.currentPassword?.[0] ??
+        fieldErrors.newPassword?.[0] ??
         "Enter your current password and a new password of at least 10 characters.",
       ok: false,
+      passwordErrorField,
     };
   }
 

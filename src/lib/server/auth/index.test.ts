@@ -205,6 +205,40 @@ describe("changeAdminPassword", () => {
     expect(operations.insertedSession).toBeNull();
   });
 
+  test("returns a current password field error for missing current password", async () => {
+    serverEnv.DATABASE_URL = "postgres://test";
+
+    const result = await changeAdminPassword({
+      adminSecurity: baseAdminSecurity(),
+      currentPassword: "",
+      currentSessionToken: "current-session-token",
+      newPassword: "new strong password",
+    });
+
+    expect(result).toEqual({
+      error: "Enter your current password.",
+      ok: false,
+      passwordErrorField: "currentPassword",
+    });
+  });
+
+  test("returns a new password field error for short new passwords", async () => {
+    serverEnv.DATABASE_URL = "postgres://test";
+
+    const result = await changeAdminPassword({
+      adminSecurity: baseAdminSecurity(),
+      currentPassword: "current password",
+      currentSessionToken: "current-session-token",
+      newPassword: "short",
+    });
+
+    expect(result).toEqual({
+      error: "New password must be at least 10 characters.",
+      ok: false,
+      passwordErrorField: "newPassword",
+    });
+  });
+
   test("rejects a new password that matches the current password", async () => {
     serverEnv.DATABASE_URL = "postgres://test";
     installFakeSql();
