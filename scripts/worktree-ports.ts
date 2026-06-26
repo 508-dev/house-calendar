@@ -283,22 +283,55 @@ async function resolveAvailablePort(
   );
 }
 
-function resolveFixedPort(
+function resolveFixedPortInRange(
   resolution: Omit<PortResolution, "port"> & { port?: number },
   disallowedPorts?: ReadonlySet<number>,
 ): PortResolution {
-  const port = resolution.port ?? resolution.basePort + resolution.offset;
+  if (resolution.usingExplicitPort) {
+    const port = resolution.port ?? resolution.basePort;
 
-  if (disallowedPorts?.has(port)) {
+    if (disallowedPorts?.has(port)) {
+      throw new Error(
+        `Port ${port} is already reserved or blocked for this service.`,
+      );
+    }
+
+    return {
+      ...resolution,
+      port,
+    };
+  }
+
+  let skippedDisallowedPortCount = 0;
+
+  for (let attempt = 0; attempt < resolution.span; attempt += 1) {
+    const offset = (resolution.offset + attempt) % resolution.span;
+    const port = resolution.basePort + offset;
+
+    if (disallowedPorts?.has(port)) {
+      skippedDisallowedPortCount += 1;
+      continue;
+    }
+
+    return {
+      ...resolution,
+      offset,
+      port,
+    };
+  }
+
+  if (
+    disallowedPorts !== undefined &&
+    skippedDisallowedPortCount === resolution.span
+  ) {
     throw new Error(
-      `Port ${port} is already reserved or blocked for this service.`,
+      `No usable fixed port found from ${resolution.basePort} to ${resolution.basePort + resolution.span - 1} because every candidate is reserved or blocked.`,
     );
   }
 
-  return {
-    ...resolution,
-    port,
-  };
+  throw new Error(
+    `No usable fixed port found from ${resolution.basePort} to ${resolution.basePort + resolution.span - 1}.`,
+  );
 }
 
 function buildDatabaseUrl(
@@ -362,7 +395,7 @@ export async function resolveWorktreePorts({
   const app =
     conductorBasePort === undefined
       ? await resolveAvailablePort(appResolution, CHROME_BLOCKED_WEB_PORTS)
-      : resolveFixedPort(appResolution, CHROME_BLOCKED_WEB_PORTS);
+      : resolveFixedPortInRange(appResolution, CHROME_BLOCKED_WEB_PORTS);
 
   const postgresReservedPorts =
     conductorBasePort !== undefined ? new Set([app.port]) : undefined;
@@ -382,7 +415,7 @@ export async function resolveWorktreePorts({
   const postgres =
     conductorBasePort === undefined
       ? await resolveAvailablePort(postgresResolution, postgresReservedPorts)
-      : resolveFixedPort(postgresResolution, postgresReservedPorts);
+      : resolveFixedPortInRange(postgresResolution, postgresReservedPorts);
 
   return {
     app,
@@ -403,6 +436,21 @@ export function appUrl(bundle: WorktreePortBundle): string {
 
 function postgresUrl(bundle: WorktreePortBundle): string {
   return `postgresql://127.0.0.1:${bundle.postgres.port}`;
+}
+
+function redactUrlCredentials(value: string): string {
+  try {
+    const url = new URL(value);
+
+    if (url.username || url.password) {
+      url.username = "redacted";
+      url.password = "redacted";
+    }
+
+    return url.toString();
+  } catch {
+    return value.replace(/\/\/[^/@]+@/, "//redacted:redacted@");
+  }
 }
 
 function formatDotenvValue(value: string): string {
@@ -448,20 +496,22 @@ export function formatWorktreePortSummary(bundle: WorktreePortBundle): string {
   const lines = [
     `App URL: ${appUrl(bundle)}`,
     `Postgres URL: ${postgresUrl(bundle)}`,
-    `Database URL: ${bundle.databaseUrl}`,
+    `Database URL: ${redactUrlCredentials(bundle.databaseUrl)}`,
     "",
   ];
 
-  if (bundle.conductorPort !== undefined) {
+  if (bundle.app.usingExplicitPort || bundle.postgres.usingExplicitPort) {
+    const conductorRange =
+      bundle.conductorPort === undefined
+        ? ""
+        : `; ${CONDUCTOR_PORT_ENV}=${bundle.conductorPort} (${bundle.conductorPort}-${bundle.conductorPort + CONDUCTOR_PORT_SPAN - 1})`;
+
+    lines.push(
+      `Port source: explicit override (app ${bundle.app.port}, Postgres ${bundle.postgres.port}${conductorRange})`,
+    );
+  } else if (bundle.conductorPort !== undefined) {
     lines.push(
       `Port source: ${CONDUCTOR_PORT_ENV}=${bundle.conductorPort} (${bundle.conductorPort}-${bundle.conductorPort + CONDUCTOR_PORT_SPAN - 1})`,
-    );
-  } else if (
-    bundle.app.usingExplicitPort ||
-    bundle.postgres.usingExplicitPort
-  ) {
-    lines.push(
-      `Port source: explicit override (app ${bundle.app.port}, Postgres ${bundle.postgres.port})`,
     );
   } else {
     lines.push(
