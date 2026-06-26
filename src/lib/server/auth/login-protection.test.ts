@@ -3,6 +3,7 @@ import type { AdminSecurityConfig } from "@/lib/config/config";
 import { serverEnv } from "../env";
 import {
   checkAdminLoginProtection,
+  checkAdminPasswordChangeProtection,
   getLoginProtectionDecision,
   hasRecentThresholdCrossing,
   isAdminLoginProtectionFullyDisabled,
@@ -269,12 +270,14 @@ describe("checkAdminLoginProtection", () => {
     serverEnv.DATABASE_URL = "postgres://test";
 
     const sqlCalls: string[] = [];
+    const sqlValues: unknown[] = [];
     const fakeSql = async <T = unknown>(
       strings: TemplateStringsArray,
-      ..._values: unknown[]
+      ...values: unknown[]
     ): Promise<T> => {
       const query = strings.join("?");
       sqlCalls.push(query);
+      sqlValues.push(...values);
 
       if (
         query.includes("select exists") &&
@@ -317,6 +320,7 @@ describe("checkAdminLoginProtection", () => {
     expect(sqlCalls.some((query) => query.includes("select exists"))).toBe(
       true,
     );
+    expect(sqlValues.some((value) => value instanceof Date)).toBe(false);
     expect(result.ok).toBe(false);
 
     if (!result.ok) {
@@ -374,6 +378,122 @@ describe("checkAdminLoginProtection", () => {
     expect(result).toEqual({
       challengeRequired: true,
       challengeRequiredAfterFailure: true,
+      keys: {},
+      ok: true,
+    });
+  });
+});
+
+describe("checkAdminPasswordChangeProtection", () => {
+  test("uses existing login throttling without requiring a challenge token", async () => {
+    serverEnv.ADMIN_LOGIN_IDENTIFIER_PEPPER = "test-login-identifier-pepper";
+    serverEnv.DATABASE_URL = "postgres://test";
+
+    const sqlCalls: string[] = [];
+    const sqlValues: unknown[] = [];
+    const fakeSql = async <T = unknown>(
+      strings: TemplateStringsArray,
+      ...values: unknown[]
+    ): Promise<T> => {
+      const query = strings.join("?");
+      sqlCalls.push(query);
+      sqlValues.push(...values);
+
+      if (
+        query.includes("select exists") &&
+        query.includes("candidate.email_hash")
+      ) {
+        return [{ value: true }] as T;
+      }
+
+      if (query.includes("select exists")) {
+        return [{ value: false }] as T;
+      }
+
+      return [] as T;
+    };
+
+    globalThis.__houseCalendarSql =
+      fakeSql as unknown as typeof globalThis.__houseCalendarSql;
+    globalThis.__houseCalendarDb = {
+      delete: () => ({
+        where: async () => undefined,
+      }),
+      select: () => ({
+        from: () => ({
+          where: async () => [{ value: 2 }],
+        }),
+      }),
+    } as unknown as typeof globalThis.__houseCalendarDb;
+
+    const result = await checkAdminPasswordChangeProtection({
+      adminSecurity: {
+        ...baseAdminSecurity(),
+        loginChallenge: {
+          afterFailures: 1,
+          mode: "always",
+          provider: "turnstile",
+        },
+        loginThrottle: {
+          ...baseAdminSecurity().loginThrottle,
+          maxEmailFailures: 2,
+        },
+      },
+      email: "admin@example.com",
+    });
+
+    expect(sqlCalls.some((query) => query.includes("select exists"))).toBe(
+      true,
+    );
+    expect(sqlValues.some((value) => value instanceof Date)).toBe(false);
+    expect(result.ok).toBe(false);
+
+    if (!result.ok) {
+      expect(result.error).toBe(
+        "Too many password change attempts. Wait a while and try again.",
+      );
+    }
+  });
+
+  test("skips password-change DB protection when throttling is disabled", async () => {
+    serverEnv.ADMIN_LOGIN_IDENTIFIER_PEPPER = "test-login-identifier-pepper";
+    serverEnv.DATABASE_URL = "postgres://test";
+
+    globalThis.__houseCalendarSql = (async (): Promise<unknown> => {
+      throw new Error("unexpected sql query");
+    }) as unknown as typeof globalThis.__houseCalendarSql;
+    globalThis.__houseCalendarDb = {
+      delete: () => ({
+        where: async () => {
+          throw new Error("unexpected cleanup");
+        },
+      }),
+      select: () => ({
+        from: () => ({
+          where: async () => {
+            throw new Error("unexpected count");
+          },
+        }),
+      }),
+    } as unknown as typeof globalThis.__houseCalendarDb;
+
+    const result = await checkAdminPasswordChangeProtection({
+      adminSecurity: {
+        ...baseAdminSecurity(),
+        loginChallenge: {
+          afterFailures: 1,
+          mode: "always",
+          provider: "turnstile",
+        },
+        loginThrottle: {
+          ...baseAdminSecurity().loginThrottle,
+          enabled: false,
+        },
+      },
+      email: "admin@example.com",
+    });
+
+    expect(result).toEqual({
       keys: {},
       ok: true,
     });

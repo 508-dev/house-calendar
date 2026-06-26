@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
@@ -40,6 +41,7 @@ type WorktreePortBundle = {
   databaseUrl: string;
   conductorPort?: number;
   projectName: string;
+  reusedRunningPostgresPort: boolean;
   worktreeRoot: string;
 };
 
@@ -107,6 +109,7 @@ function resolvePort({
   explicitPortEnvName,
   fallbackPortEnvName,
   ignoreFallbackExplicitPort = false,
+  ignorePrimaryExplicitPort = false,
   pathKey,
   preferredOffset,
   span,
@@ -120,12 +123,15 @@ function resolvePort({
   explicitPortEnvName: string;
   fallbackPortEnvName?: string;
   ignoreFallbackExplicitPort?: boolean;
+  ignorePrimaryExplicitPort?: boolean;
   pathKey: string;
   preferredOffset?: number;
   span: number;
   worktreeRoot: string;
 }): Omit<PortResolution, "port"> & { port?: number } {
-  const primaryExplicitPortValue = env[explicitPortEnvName];
+  const primaryExplicitPortValue = ignorePrimaryExplicitPort
+    ? undefined
+    : env[explicitPortEnvName];
   const primaryExplicitPort = parsePortLike(
     primaryExplicitPortValue,
     explicitPortEnvName,
@@ -344,16 +350,67 @@ function buildDatabaseUrl(
   return `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@127.0.0.1:${postgresPort}/${encodeURIComponent(database)}`;
 }
 
-export async function resolveWorktreePorts({
+function parseComposePortOutput(output: string): number | undefined {
+  const line = output
+    .split(/\r?\n/)
+    .map((value) => value.trim())
+    .find(Boolean);
+  const match = line?.match(/:(\d+)$/);
+
+  if (!match) {
+    return undefined;
+  }
+
+  return parsePortLike(match[1], "docker compose postgres port");
+}
+
+export function detectRunningComposePostgresPort({
   env = process.env,
   worktreeRoot,
 }: {
   env?: NodeJS.ProcessEnv;
   worktreeRoot: string;
+}): number | undefined {
+  const projectName = worktreeComposeProjectName(worktreeRoot);
+
+  try {
+    const output = execFileSync(
+      "docker",
+      ["compose", "port", "postgres", "5432"],
+      {
+        cwd: resolve(worktreeRoot),
+        encoding: "utf8",
+        env: {
+          ...env,
+          COMPOSE_PROJECT_NAME: projectName,
+        },
+        stdio: ["ignore", "pipe", "ignore"],
+      },
+    );
+
+    return parseComposePortOutput(output);
+  } catch {
+    return undefined;
+  }
+}
+
+export async function resolveWorktreePorts({
+  env = process.env,
+  runningPostgresPort,
+  worktreeRoot,
+}: {
+  env?: NodeJS.ProcessEnv;
+  runningPostgresPort?: number;
+  worktreeRoot: string;
 }): Promise<WorktreePortBundle> {
   if (!worktreeRoot) {
     throw new Error("worktreeRoot is required to resolve worktree ports.");
   }
+
+  const existingPostgresPort =
+    runningPostgresPort === undefined
+      ? undefined
+      : parsePortLike(String(runningPostgresPort), "runningPostgresPort");
 
   const conductorBasePort = parsePortLike(
     env[CONDUCTOR_PORT_ENV],
@@ -376,7 +433,7 @@ export async function resolveWorktreePorts({
   }
 
   const pathKey = worktreePathKey(worktreeRoot);
-  const ignoreFallbackExplicitPort = conductorBasePort !== undefined;
+  const ignoreExplicitPort = conductorBasePort !== undefined;
 
   const appResolution = resolvePort({
     basePort: conductorBasePort,
@@ -386,7 +443,8 @@ export async function resolveWorktreePorts({
     env,
     explicitPortEnvName: WORKTREE_DEV_PORT_ENV,
     fallbackPortEnvName: "PORT",
-    ignoreFallbackExplicitPort,
+    ignoreFallbackExplicitPort: ignoreExplicitPort,
+    ignorePrimaryExplicitPort: ignoreExplicitPort,
     pathKey,
     preferredOffset: conductorBasePort === undefined ? undefined : 0,
     span,
@@ -406,26 +464,46 @@ export async function resolveWorktreePorts({
     env,
     explicitPortEnvName: WORKTREE_POSTGRES_PORT_ENV,
     fallbackPortEnvName: "POSTGRES_PORT",
-    ignoreFallbackExplicitPort,
+    ignoreFallbackExplicitPort: ignoreExplicitPort,
+    ignorePrimaryExplicitPort: ignoreExplicitPort,
     pathKey,
     preferredOffset: conductorBasePort === undefined ? undefined : 1,
     span,
     worktreeRoot,
   });
   const postgres =
-    conductorBasePort === undefined
-      ? await resolveAvailablePort(postgresResolution, postgresReservedPorts)
-      : resolveFixedPortInRange(postgresResolution, postgresReservedPorts);
+    existingPostgresPort === undefined
+      ? conductorBasePort === undefined
+        ? await resolveAvailablePort(postgresResolution, postgresReservedPorts)
+        : resolveFixedPortInRange(postgresResolution, postgresReservedPorts)
+      : {
+          ...postgresResolution,
+          offset:
+            !postgresResolution.usingExplicitPort &&
+            existingPostgresPort >= postgresResolution.basePort &&
+            existingPostgresPort <
+              postgresResolution.basePort + postgresResolution.span
+              ? existingPostgresPort - postgresResolution.basePort
+              : postgresResolution.offset,
+          port: existingPostgresPort,
+        };
+
+  if (existingPostgresPort !== undefined && existingPostgresPort === app.port) {
+    throw new Error(
+      `Running Postgres port ${existingPostgresPort} conflicts with app port ${app.port}.`,
+    );
+  }
 
   return {
     app,
     conductorPort: conductorBasePort,
     postgres,
     databaseUrl:
-      conductorBasePort === undefined
+      conductorBasePort === undefined && existingPostgresPort === undefined
         ? env.DATABASE_URL || buildDatabaseUrl(env, postgres.port)
         : buildDatabaseUrl(env, postgres.port),
     projectName: worktreeComposeProjectName(worktreeRoot),
+    reusedRunningPostgresPort: existingPostgresPort !== undefined,
     worktreeRoot: resolve(worktreeRoot),
   };
 }
@@ -457,23 +535,41 @@ function formatDotenvValue(value: string): string {
   return JSON.stringify(value);
 }
 
-function buildEnvFileContents(
+export function buildWorktreeEnv(
   bundle: WorktreePortBundle,
   env: NodeJS.ProcessEnv,
-): string {
+): NodeJS.ProcessEnv {
   const postgresUser = env.POSTGRES_USER || "house_calendar";
   const postgresPassword = env.POSTGRES_PASSWORD || "house_calendar";
   const postgresDb = env.POSTGRES_DB || "house_calendar";
 
+  return {
+    ...env,
+    COMPOSE_PROJECT_NAME: bundle.projectName,
+    DATABASE_URL: bundle.databaseUrl,
+    PORT: String(bundle.app.port),
+    POSTGRES_DB: postgresDb,
+    POSTGRES_PASSWORD: postgresPassword,
+    POSTGRES_PORT: String(bundle.postgres.port),
+    POSTGRES_USER: postgresUser,
+  };
+}
+
+function buildEnvFileContents(
+  bundle: WorktreePortBundle,
+  env: NodeJS.ProcessEnv,
+): string {
+  const worktreeEnv = buildWorktreeEnv(bundle, env);
+
   return [
-    `COMPOSE_PROJECT_NAME=${formatDotenvValue(bundle.projectName)}`,
-    `PORT=${bundle.app.port}`,
-    `POSTGRES_PORT=${bundle.postgres.port}`,
-    `POSTGRES_DB=${formatDotenvValue(postgresDb)}`,
-    `POSTGRES_USER=${formatDotenvValue(postgresUser)}`,
-    `POSTGRES_PASSWORD=${formatDotenvValue(postgresPassword)}`,
+    `COMPOSE_PROJECT_NAME=${formatDotenvValue(worktreeEnv.COMPOSE_PROJECT_NAME ?? "")}`,
+    `PORT=${worktreeEnv.PORT}`,
+    `POSTGRES_PORT=${worktreeEnv.POSTGRES_PORT}`,
+    `POSTGRES_DB=${formatDotenvValue(worktreeEnv.POSTGRES_DB ?? "")}`,
+    `POSTGRES_USER=${formatDotenvValue(worktreeEnv.POSTGRES_USER ?? "")}`,
+    `POSTGRES_PASSWORD=${formatDotenvValue(worktreeEnv.POSTGRES_PASSWORD ?? "")}`,
     `WORKTREE_PORT_OFFSET=${bundle.app.offset}`,
-    `DATABASE_URL=${formatDotenvValue(bundle.databaseUrl)}`,
+    `DATABASE_URL=${formatDotenvValue(worktreeEnv.DATABASE_URL ?? "")}`,
     "",
   ].join("\n");
 }
@@ -500,7 +596,14 @@ export function formatWorktreePortSummary(bundle: WorktreePortBundle): string {
     "",
   ];
 
-  if (bundle.app.usingExplicitPort || bundle.postgres.usingExplicitPort) {
+  if (bundle.reusedRunningPostgresPort) {
+    lines.push(
+      `Port source: running Docker Compose Postgres on ${bundle.postgres.port}`,
+    );
+  } else if (
+    bundle.app.usingExplicitPort ||
+    bundle.postgres.usingExplicitPort
+  ) {
     const conductorRange =
       bundle.conductorPort === undefined
         ? ""

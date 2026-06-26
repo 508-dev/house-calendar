@@ -1,20 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { redirectResponse } from "@/lib/server/redirect-response";
 import { buildRequestUrl } from "@/lib/server/request-url";
-
-function redirectToAdmin(
-  request: Request,
-  siteId: string,
-  params?: Record<string, string>,
-) {
-  const url = buildRequestUrl(request, `/admin/${siteId}`);
-
-  for (const [key, value] of Object.entries(params ?? {})) {
-    url.searchParams.set(key, value);
-  }
-
-  return redirectResponse(url);
-}
+import { redirectToAdmin } from "./-redirect";
 
 export const Route = createFileRoute("/admin/$siteId/sync")({
   server: {

@@ -1,40 +1,26 @@
 import { spawn } from "node:child_process";
 import {
-  appUrl,
   buildWorktreeEnv,
   detectRunningComposePostgresPort,
   resolveWorktreePorts,
 } from "./worktree-ports";
+
+const command = Bun.argv.slice(2);
+
+if (command.length === 0) {
+  throw new Error("Usage: bun run scripts/with-worktree-env.ts -- <command>");
+}
 
 const worktreeRoot = process.cwd();
 const bundle = await resolveWorktreePorts({
   runningPostgresPort: detectRunningComposePostgresPort({ worktreeRoot }),
   worktreeRoot,
 });
-const env = buildWorktreeEnv(bundle, process.env);
-
-console.log(`Starting TanStack Start on ${appUrl(bundle)}`);
-console.log(
-  `Expected Postgres on postgresql://127.0.0.1:${bundle.postgres.port}`,
-);
-
-const child = spawn(
-  process.execPath,
-  [
-    "x",
-    "vite",
-    "dev",
-    "--host",
-    "127.0.0.1",
-    "--port",
-    String(bundle.app.port),
-  ],
-  {
-    cwd: bundle.worktreeRoot,
-    env,
-    stdio: "inherit",
-  },
-);
+const child = spawn(command[0], command.slice(1), {
+  cwd: bundle.worktreeRoot,
+  env: buildWorktreeEnv(bundle, process.env),
+  stdio: "inherit",
+});
 
 child.on("exit", (code, signal) => {
   if (signal) {

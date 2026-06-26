@@ -12,8 +12,9 @@ If you want the product overview, start with [README.md](./README.md). If you wa
 - Postgres runs in Docker Compose for local development
 - Drizzle is the ORM and typed query layer for Postgres
 - Per-worktree ports are derived by `scripts/worktree-ports.ts`, and app ports skip browser-blocked ports such as `5060` and `5061`
-- In Conductor workspaces, `CONDUCTOR_PORT` is treated as the first port in the workspace's assigned 10-port range; the app uses that port and Postgres uses the next port in the range unless explicit `WORKTREE_*_PORT` overrides are set
-- `bun dev` writes `.env` for the current worktree and starts Vite on the derived port
+- In Conductor workspaces, `CONDUCTOR_PORT` is treated as the first port in the workspace's assigned 10-port range; the app uses that port and Postgres uses the next port in the range
+- `bun run db:*`, `bun run admin:*`, and `bun dev` pass derived local env directly instead of relying on `.env`
+- `WORKTREE_DEV_PORT` and `WORKTREE_POSTGRES_PORT` are manual overrides only when `CONDUCTOR_PORT` is unset; generated `.env` files do not write them
 
 ## Prerequisites
 
@@ -101,7 +102,8 @@ See the derived worktree ports:
 bun run ports
 ```
 
-Write `.env` for this worktree:
+Optionally write `.env` for this worktree when you need to inspect or export the
+derived local settings:
 
 ```bash
 bun run ports:write
@@ -240,6 +242,11 @@ Reset the existing admin password and revoke all admin sessions:
 bun run admin:reset-password -- --email owner@example.com --password 'new strong password'
 ```
 
+When you are already signed in, you can also change the admin password from the
+selected house admin page. The in-app flow requires the current password,
+stores a new password hash, revokes other admin sessions, and keeps the current
+browser signed in with a replacement session.
+
 Minimal local setup flow:
 
 1. Run `bun run db:start`
@@ -322,7 +329,8 @@ Only Postgres is containerized locally.
 
 - [compose.yml](./compose.yml) starts a local `postgres:18-alpine`
 - [scripts/worktree-ports.ts](./scripts/worktree-ports.ts) derives unique app and database ports from the worktree path, or uses `CONDUCTOR_PORT` and the next port in Conductor's assigned range
-- [scripts/dev.ts](./scripts/dev.ts) writes `.env` and starts Vite on the derived port
+- [scripts/db.ts](./scripts/db.ts) passes derived env to Docker Compose without writing `.env`
+- [scripts/dev.ts](./scripts/dev.ts) passes derived env to Vite and starts it on the derived port
 - [src/lib/server/db-schema.ts](./src/lib/server/db-schema.ts) is the Drizzle schema source
 
 For local dev, the generated defaults are:

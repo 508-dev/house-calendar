@@ -127,6 +127,8 @@ describe("worktree ports", () => {
     expect(envFile).toContain('POSTGRES_DB="house calendar"');
     expect(envFile).toContain('POSTGRES_USER="user name"');
     expect(envFile).toContain('POSTGRES_PASSWORD="p@ss:/#word"');
+    expect(envFile).not.toContain("WORKTREE_DEV_PORT=");
+    expect(envFile).not.toContain("WORKTREE_POSTGRES_PORT=");
   });
 
   test("uses stable offsets in the Conductor 10-port range when CONDUCTOR_PORT is set", async () => {
@@ -179,7 +181,7 @@ describe("worktree ports", () => {
     );
   });
 
-  test("reports explicit overrides even when CONDUCTOR_PORT is also set", async () => {
+  test("ignores explicit override env when CONDUCTOR_PORT is set", async () => {
     const conductorPort = 62020;
     const bundle = await resolveWorktreePorts({
       worktreeRoot: join(tmpdir(), "house-calendar-test-explicit-summary"),
@@ -193,8 +195,10 @@ describe("worktree ports", () => {
 
     const summary = formatWorktreePortSummary(bundle);
 
+    expect(bundle.app.port).toBe(conductorPort);
+    expect(bundle.postgres.port).toBe(conductorPort + 1);
     expect(summary).toContain(
-      `Port source: explicit override (app 62040, Postgres 62041; CONDUCTOR_PORT=${conductorPort} (${conductorPort}-${conductorPort + CONDUCTOR_PORT_SPAN - 1}))`,
+      `Port source: CONDUCTOR_PORT=${conductorPort} (${conductorPort}-${conductorPort + CONDUCTOR_PORT_SPAN - 1})`,
     );
   });
 
@@ -238,7 +242,7 @@ describe("worktree ports", () => {
     }
   });
 
-  test("keeps generated ports stable when Conductor env is loaded again", async () => {
+  test("does not persist generated Conductor ports as explicit overrides", async () => {
     const worktreeRoot = join(
       tmpdir(),
       "house-calendar-test-conductor-generated-env",
@@ -260,6 +264,73 @@ describe("worktree ports", () => {
     const generatedEnv = parseDotenv(
       readFileSync(join(worktreeRoot, ".env"), "utf8"),
     );
+    expect(generatedEnv.WORKTREE_DEV_PORT).toBeUndefined();
+    expect(generatedEnv.WORKTREE_POSTGRES_PORT).toBeUndefined();
+
+    const nextConductorPort = conductorPort + CONDUCTOR_PORT_SPAN;
+    const secondBundle = await resolveWorktreePorts({
+      worktreeRoot,
+      env: {
+        ...generatedEnv,
+        CONDUCTOR_PORT: String(nextConductorPort),
+        NODE_ENV: "test",
+      },
+    });
+
+    expect(secondBundle.app.port).toBe(nextConductorPort);
+    expect(secondBundle.postgres.port).toBe(nextConductorPort + 1);
+    expect(secondBundle.databaseUrl).toContain(
+      `@127.0.0.1:${nextConductorPort + 1}/`,
+    );
+  });
+
+  test("keeps stale generated worktree ports from overriding CONDUCTOR_PORT", async () => {
+    const bundle = await resolveWorktreePorts({
+      worktreeRoot: join(tmpdir(), "house-calendar-test-conductor-explicit"),
+      env: {
+        CONDUCTOR_PORT: "62020",
+        NODE_ENV: "test",
+        WORKTREE_DEV_PORT: "62040",
+        WORKTREE_POSTGRES_PORT: "62041",
+      },
+    });
+
+    expect(bundle.app.port).toBe(62020);
+    expect(bundle.postgres.port).toBe(62021);
+  });
+
+  test("keeps generated worktree ports stable when Conductor env is loaded again", async () => {
+    const worktreeRoot = join(
+      tmpdir(),
+      "house-calendar-test-conductor-generated-env",
+    );
+    const conductorPort = 62050;
+    const firstBundle = await resolveWorktreePorts({
+      worktreeRoot,
+      env: {
+        CONDUCTOR_PORT: String(conductorPort),
+        NODE_ENV: "test",
+      },
+    });
+
+    writeWorktreeEnvFiles(firstBundle, {
+      CONDUCTOR_PORT: String(conductorPort),
+      NODE_ENV: "test",
+    });
+
+    const generatedEnv = Object.fromEntries(
+      readFileSync(join(worktreeRoot, ".env"), "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => {
+          const [key, ...valueParts] = line.split("=");
+          const rawValue = valueParts.join("=");
+          return [
+            key,
+            rawValue.startsWith('"') ? JSON.parse(rawValue) : rawValue,
+          ];
+        }),
+    );
     const secondBundle = await resolveWorktreePorts({
       worktreeRoot,
       env: {
@@ -274,21 +345,8 @@ describe("worktree ports", () => {
     expect(secondBundle.databaseUrl).toContain(
       `@127.0.0.1:${firstBundle.postgres.port}/`,
     );
-  });
-
-  test("preserves explicit worktree ports over CONDUCTOR_PORT", async () => {
-    const bundle = await resolveWorktreePorts({
-      worktreeRoot: join(tmpdir(), "house-calendar-test-conductor-explicit"),
-      env: {
-        CONDUCTOR_PORT: "62020",
-        NODE_ENV: "test",
-        WORKTREE_DEV_PORT: "62040",
-        WORKTREE_POSTGRES_PORT: "62041",
-      },
-    });
-
-    expect(bundle.app.port).toBe(62040);
-    expect(bundle.postgres.port).toBe(62041);
+    expect(generatedEnv.WORKTREE_DEV_PORT).toBeUndefined();
+    expect(generatedEnv.WORKTREE_POSTGRES_PORT).toBeUndefined();
   });
 
   test("probes forward when the hashed port is already occupied", async () => {
@@ -315,6 +373,39 @@ describe("worktree ports", () => {
       expect(bundle.app.port).not.toBe(occupiedPort);
       expect(bundle.app.port).toBeGreaterThanOrEqual(basePort);
       expect(bundle.app.port).toBeLessThan(basePort + span);
+    } finally {
+      await new Promise<void>((resolveClose) =>
+        server.close(() => resolveClose()),
+      );
+    }
+  });
+
+  test("reuses a running compose Postgres port for follow-on commands", async () => {
+    const worktreeRoot = join(tmpdir(), "house-calendar-test-running-postgres");
+    const env = {
+      DATABASE_URL: "postgresql://stale:stale@127.0.0.1:49999/stale",
+      NODE_ENV: "test",
+      WORKTREE_POSTGRES_BASE_PORT: "49250",
+      WORKTREE_PORT_SPAN: "20",
+    };
+    const firstBundle = await resolveWorktreePorts({ env, worktreeRoot });
+    const server = await listen(firstBundle.postgres.port);
+
+    try {
+      const driftedBundle = await resolveWorktreePorts({ env, worktreeRoot });
+      const reusedBundle = await resolveWorktreePorts({
+        env,
+        runningPostgresPort: firstBundle.postgres.port,
+        worktreeRoot,
+      });
+
+      expect(driftedBundle.postgres.port).not.toBe(firstBundle.postgres.port);
+      expect(reusedBundle.postgres.port).toBe(firstBundle.postgres.port);
+      expect(reusedBundle.databaseUrl).toContain(
+        `@127.0.0.1:${firstBundle.postgres.port}/`,
+      );
+      expect(reusedBundle.databaseUrl).not.toContain("49999");
+      expect(reusedBundle.reusedRunningPostgresPort).toBe(true);
     } finally {
       await new Promise<void>((resolveClose) =>
         server.close(() => resolveClose()),

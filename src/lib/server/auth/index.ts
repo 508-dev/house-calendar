@@ -13,6 +13,7 @@ import {
 } from "./bootstrap-code";
 import {
   checkAdminLoginProtection,
+  checkAdminPasswordChangeProtection,
   clearAdminLoginFailures,
   delayAfterFailedAdminLogin,
   isAdminLoginProtectionFullyDisabled,
@@ -39,6 +40,16 @@ const loginInputSchema = z.object({
 
 const directSetupInputSchema = loginInputSchema.extend({
   password: z.string().min(ADMIN_PASSWORD_MIN_LENGTH),
+});
+
+const passwordChangeInputSchema = z.object({
+  currentPassword: z.string().min(1, "Enter your current password."),
+  newPassword: z
+    .string()
+    .min(
+      ADMIN_PASSWORD_MIN_LENGTH,
+      "New password must be at least 10 characters.",
+    ),
 });
 
 export type AdminSession = {
@@ -89,6 +100,18 @@ type AdminPasswordResetResult =
       email: string;
       ok: true;
       revokedSessionCount: number;
+    };
+
+type AdminPasswordChangeResult =
+  | {
+      error: string;
+      ok: false;
+      passwordErrorField?: "currentPassword" | "newPassword";
+      requiresLogin?: boolean;
+    }
+  | {
+      ok: true;
+      session: AdminSession;
     };
 
 type AuthDb = ReturnType<typeof getDb>;
@@ -156,6 +179,34 @@ function isAdminAlreadyCompleteError(error: unknown): boolean {
     (message) =>
       message.includes("admin_users_singleton_idx") ||
       message.includes("duplicate key value violates unique constraint"),
+  );
+}
+
+function userFacingAuthError(
+  message: string,
+  options?: {
+    passwordErrorField?: "currentPassword" | "newPassword";
+    requiresLogin?: boolean;
+  },
+): Error & {
+  passwordErrorField?: "currentPassword" | "newPassword";
+  requiresLogin?: boolean;
+  userFacing: true;
+} {
+  return Object.assign(new Error(message), {
+    passwordErrorField: options?.passwordErrorField,
+    requiresLogin: options?.requiresLogin,
+    userFacing: true as const,
+  });
+}
+
+function isUserFacingAuthError(error: unknown): error is Error & {
+  passwordErrorField?: "currentPassword" | "newPassword";
+  requiresLogin?: boolean;
+  userFacing: true;
+} {
+  return (
+    error instanceof Error && "userFacing" in error && error.userFacing === true
   );
 }
 
@@ -772,5 +823,169 @@ export async function resetAdminPassword(input: {
     }
 
     return { error: "Admin password reset failed.", ok: false };
+  }
+}
+
+export async function changeAdminPassword(input: {
+  adminSecurity: AdminSecurityConfig;
+  currentPassword: string;
+  currentSessionToken: string | undefined;
+  newPassword: string;
+  request?: Request;
+}): Promise<AdminPasswordChangeResult> {
+  if (!serverEnv.DATABASE_URL) {
+    return { error: "DATABASE_URL is not configured.", ok: false };
+  }
+
+  if (!input.currentSessionToken) {
+    return {
+      error: "Admin session has expired. Sign in again.",
+      ok: false,
+      requiresLogin: true,
+    };
+  }
+
+  const parsed = passwordChangeInputSchema.safeParse(input);
+
+  if (!parsed.success) {
+    const fieldErrors = parsed.error.flatten().fieldErrors;
+    const passwordErrorField = fieldErrors.currentPassword?.[0]
+      ? "currentPassword"
+      : fieldErrors.newPassword?.[0]
+        ? "newPassword"
+        : undefined;
+
+    return {
+      error:
+        fieldErrors.currentPassword?.[0] ??
+        fieldErrors.newPassword?.[0] ??
+        "Enter your current password and a new password of at least 10 characters.",
+      ok: false,
+      passwordErrorField,
+    };
+  }
+
+  await ensureAuthSchema();
+  const db = getDb();
+  const currentSessionTokenHash = hashSessionToken(input.currentSessionToken);
+  const passwordChangeThrottleEnabled =
+    input.adminSecurity.loginThrottle.enabled;
+
+  try {
+    const [user] = await db
+      .select({
+        email: adminUsers.email,
+        id: adminUsers.id,
+        passwordHash: adminUsers.passwordHash,
+      })
+      .from(adminSessions)
+      .innerJoin(adminUsers, eq(adminUsers.id, adminSessions.userId))
+      .where(
+        and(
+          eq(adminSessions.tokenHash, currentSessionTokenHash),
+          gt(adminSessions.expiresAt, new Date()),
+        ),
+      )
+      .limit(1);
+
+    if (!user) {
+      throw userFacingAuthError("Admin session has expired. Sign in again.", {
+        requiresLogin: true,
+      });
+    }
+
+    const protection = await checkAdminPasswordChangeProtection({
+      adminSecurity: input.adminSecurity,
+      email: user.email,
+      request: input.request,
+    });
+
+    if (!protection.ok) {
+      throw userFacingAuthError(protection.error);
+    }
+
+    if (!verifyPassword(parsed.data.currentPassword, user.passwordHash)) {
+      if (passwordChangeThrottleEnabled) {
+        await recordAdminLoginFailure({
+          adminSecurity: input.adminSecurity,
+          email: user.email,
+          keys: protection.keys,
+          reason: "invalid_current_password",
+        });
+        await delayAfterFailedAdminLogin(input.adminSecurity);
+      }
+
+      throw userFacingAuthError("Current password is incorrect.", {
+        passwordErrorField: "currentPassword",
+      });
+    }
+
+    if (verifyPassword(parsed.data.newPassword, user.passwordHash)) {
+      throw userFacingAuthError(
+        "New password must be different from the current password.",
+        {
+          passwordErrorField: "newPassword",
+        },
+      );
+    }
+
+    if (passwordChangeThrottleEnabled) {
+      await clearAdminLoginFailures({
+        email: user.email,
+        keys: protection.keys,
+      });
+    }
+
+    const changeResult = await db.transaction(async (transactionDb) => {
+      const newPasswordHash = hashPassword(parsed.data.newPassword);
+
+      const updatedUsers = await transactionDb
+        .update(adminUsers)
+        .set({
+          passwordHash: newPasswordHash,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(adminUsers.id, user.id),
+            eq(adminUsers.passwordHash, user.passwordHash),
+          ),
+        )
+        .returning({ id: adminUsers.id });
+
+      if (updatedUsers.length === 0) {
+        throw userFacingAuthError("Admin password changed. Sign in again.", {
+          requiresLogin: true,
+        });
+      }
+
+      await transactionDb
+        .delete(adminSessions)
+        .where(eq(adminSessions.userId, user.id));
+
+      const session = await createAdminSession(
+        user.id,
+        user.email,
+        transactionDb,
+      );
+
+      return { session };
+    });
+
+    return {
+      ok: true,
+      session: changeResult.session,
+    };
+  } catch (error) {
+    if (isUserFacingAuthError(error)) {
+      return {
+        error: error.message,
+        ok: false,
+        passwordErrorField: error.passwordErrorField,
+        requiresLogin: error.requiresLogin === true,
+      };
+    }
+
+    return { error: "Admin password change failed.", ok: false };
   }
 }

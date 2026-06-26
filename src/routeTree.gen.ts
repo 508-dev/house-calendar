@@ -23,6 +23,7 @@ import { Route as SiteIdViewerAccessRouteImport } from './routes/$siteId/viewer-
 import { Route as AdminSetupSubmitRouteImport } from './routes/admin/setup/submit'
 import { Route as AdminLoginSubmitRouteImport } from './routes/admin/login/submit'
 import { Route as AdminSiteIdSyncRouteImport } from './routes/admin/$siteId/sync'
+import { Route as AdminSiteIdPasswordRouteImport } from './routes/admin/$siteId/password'
 
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
@@ -94,6 +95,11 @@ const AdminSiteIdSyncRoute = AdminSiteIdSyncRouteImport.update({
   path: '/sync',
   getParentRoute: () => AdminSiteIdRoute,
 } as any)
+const AdminSiteIdPasswordRoute = AdminSiteIdPasswordRouteImport.update({
+  id: '/password',
+  path: '/password',
+  getParentRoute: () => AdminSiteIdRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -107,6 +113,7 @@ export interface FileRoutesByFullPath {
   '/api/demo': typeof ApiDemoRoute
   '/api/health': typeof ApiHealthRoute
   '/admin/': typeof AdminIndexRoute
+  '/admin/$siteId/password': typeof AdminSiteIdPasswordRoute
   '/admin/$siteId/sync': typeof AdminSiteIdSyncRoute
   '/admin/login/submit': typeof AdminLoginSubmitRoute
   '/admin/setup/submit': typeof AdminSetupSubmitRoute
@@ -122,6 +129,7 @@ export interface FileRoutesByTo {
   '/api/demo': typeof ApiDemoRoute
   '/api/health': typeof ApiHealthRoute
   '/admin': typeof AdminIndexRoute
+  '/admin/$siteId/password': typeof AdminSiteIdPasswordRoute
   '/admin/$siteId/sync': typeof AdminSiteIdSyncRoute
   '/admin/login/submit': typeof AdminLoginSubmitRoute
   '/admin/setup/submit': typeof AdminSetupSubmitRoute
@@ -139,6 +147,7 @@ export interface FileRoutesById {
   '/api/demo': typeof ApiDemoRoute
   '/api/health': typeof ApiHealthRoute
   '/admin/': typeof AdminIndexRoute
+  '/admin/$siteId/password': typeof AdminSiteIdPasswordRoute
   '/admin/$siteId/sync': typeof AdminSiteIdSyncRoute
   '/admin/login/submit': typeof AdminLoginSubmitRoute
   '/admin/setup/submit': typeof AdminSetupSubmitRoute
@@ -157,6 +166,7 @@ export interface FileRouteTypes {
     | '/api/demo'
     | '/api/health'
     | '/admin/'
+    | '/admin/$siteId/password'
     | '/admin/$siteId/sync'
     | '/admin/login/submit'
     | '/admin/setup/submit'
@@ -172,6 +182,7 @@ export interface FileRouteTypes {
     | '/api/demo'
     | '/api/health'
     | '/admin'
+    | '/admin/$siteId/password'
     | '/admin/$siteId/sync'
     | '/admin/login/submit'
     | '/admin/setup/submit'
@@ -188,6 +199,7 @@ export interface FileRouteTypes {
     | '/api/demo'
     | '/api/health'
     | '/admin/'
+    | '/admin/$siteId/password'
     | '/admin/$siteId/sync'
     | '/admin/login/submit'
     | '/admin/setup/submit'
@@ -301,6 +313,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminSiteIdSyncRouteImport
       parentRoute: typeof AdminSiteIdRoute
     }
+    '/admin/$siteId/password': {
+      id: '/admin/$siteId/password'
+      path: '/password'
+      fullPath: '/admin/$siteId/password'
+      preLoaderRoute: typeof AdminSiteIdPasswordRouteImport
+      parentRoute: typeof AdminSiteIdRoute
+    }
   }
 }
 
@@ -316,10 +335,12 @@ const SiteIdRouteWithChildren =
   SiteIdRoute._addFileChildren(SiteIdRouteChildren)
 
 interface AdminSiteIdRouteChildren {
+  AdminSiteIdPasswordRoute: typeof AdminSiteIdPasswordRoute
   AdminSiteIdSyncRoute: typeof AdminSiteIdSyncRoute
 }
 
 const AdminSiteIdRouteChildren: AdminSiteIdRouteChildren = {
+  AdminSiteIdPasswordRoute: AdminSiteIdPasswordRoute,
   AdminSiteIdSyncRoute: AdminSiteIdSyncRoute,
 }
 

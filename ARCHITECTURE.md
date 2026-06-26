@@ -175,6 +175,8 @@ This repo now ships a deliberately small owner-auth model:
 - optional future email flows, not required for v1
 - a dev-only CLI bootstrap helper for local setup, disabled in production
 - an explicit operator password reset command that revokes admin sessions
+- an authenticated in-app password change flow that verifies the current
+  password, revokes other sessions, and replaces the current session cookie
 
 This is a better fit for a self-hosted template than requiring SMTP on day one.
 
@@ -416,6 +418,18 @@ Flow:
 1. delete the current session row by token hash
 2. clear the session cookie
 
+#### `/admin/{siteId}/password`
+
+Use from an authenticated admin page when the owner knows the current password.
+
+Flow:
+
+1. collect current password + new password confirmation
+2. verify the current session token and current password
+3. update the stored password hash
+4. revoke existing admin sessions
+5. create a replacement session and issue a new httpOnly cookie
+
 ### Security posture
 
 What this auth slice intentionally does:
@@ -423,6 +437,7 @@ What this auth slice intentionally does:
 - requires a valid unused bootstrap code for first-run setup
 - requires email + password for the owner account
 - keeps sessions server-side
+- lets an authenticated owner rotate the admin password without shell access
 - avoids leaking auth state into checked-in config
 
 What it intentionally does not do yet:
