@@ -380,6 +380,39 @@ describe("worktree ports", () => {
     }
   });
 
+  test("reuses a running compose Postgres port for follow-on commands", async () => {
+    const worktreeRoot = join(tmpdir(), "house-calendar-test-running-postgres");
+    const env = {
+      DATABASE_URL: "postgresql://stale:stale@127.0.0.1:49999/stale",
+      NODE_ENV: "test",
+      WORKTREE_POSTGRES_BASE_PORT: "49250",
+      WORKTREE_PORT_SPAN: "20",
+    };
+    const firstBundle = await resolveWorktreePorts({ env, worktreeRoot });
+    const server = await listen(firstBundle.postgres.port);
+
+    try {
+      const driftedBundle = await resolveWorktreePorts({ env, worktreeRoot });
+      const reusedBundle = await resolveWorktreePorts({
+        env,
+        runningPostgresPort: firstBundle.postgres.port,
+        worktreeRoot,
+      });
+
+      expect(driftedBundle.postgres.port).not.toBe(firstBundle.postgres.port);
+      expect(reusedBundle.postgres.port).toBe(firstBundle.postgres.port);
+      expect(reusedBundle.databaseUrl).toContain(
+        `@127.0.0.1:${firstBundle.postgres.port}/`,
+      );
+      expect(reusedBundle.databaseUrl).not.toContain("49999");
+      expect(reusedBundle.reusedRunningPostgresPort).toBe(true);
+    } finally {
+      await new Promise<void>((resolveClose) =>
+        server.close(() => resolveClose()),
+      );
+    }
+  });
+
   test("skips browser-blocked app ports when the hashed port lands on one", async () => {
     const span = 4;
     const worktreeRoot = findWorktreeRootWithOffset(span, 1);

@@ -2,10 +2,15 @@ import { spawn } from "node:child_process";
 import {
   appUrl,
   buildWorktreeEnv,
+  detectRunningComposePostgresPort,
   resolveWorktreePorts,
 } from "./worktree-ports";
 
-const bundle = await resolveWorktreePorts({ worktreeRoot: process.cwd() });
+const worktreeRoot = process.cwd();
+const bundle = await resolveWorktreePorts({
+  runningPostgresPort: detectRunningComposePostgresPort({ worktreeRoot }),
+  worktreeRoot,
+});
 const env = buildWorktreeEnv(bundle, process.env);
 
 console.log(`Starting TanStack Start on ${appUrl(bundle)}`);

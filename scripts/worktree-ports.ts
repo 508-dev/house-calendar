@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
@@ -40,6 +41,7 @@ type WorktreePortBundle = {
   databaseUrl: string;
   conductorPort?: number;
   projectName: string;
+  reusedRunningPostgresPort: boolean;
   worktreeRoot: string;
 };
 
@@ -348,16 +350,67 @@ function buildDatabaseUrl(
   return `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@127.0.0.1:${postgresPort}/${encodeURIComponent(database)}`;
 }
 
-export async function resolveWorktreePorts({
+function parseComposePortOutput(output: string): number | undefined {
+  const line = output
+    .split(/\r?\n/)
+    .map((value) => value.trim())
+    .find(Boolean);
+  const match = line?.match(/:(\d+)$/);
+
+  if (!match) {
+    return undefined;
+  }
+
+  return parsePortLike(match[1], "docker compose postgres port");
+}
+
+export function detectRunningComposePostgresPort({
   env = process.env,
   worktreeRoot,
 }: {
   env?: NodeJS.ProcessEnv;
   worktreeRoot: string;
+}): number | undefined {
+  const projectName = worktreeComposeProjectName(worktreeRoot);
+
+  try {
+    const output = execFileSync(
+      "docker",
+      ["compose", "port", "postgres", "5432"],
+      {
+        cwd: resolve(worktreeRoot),
+        encoding: "utf8",
+        env: {
+          ...env,
+          COMPOSE_PROJECT_NAME: projectName,
+        },
+        stdio: ["ignore", "pipe", "ignore"],
+      },
+    );
+
+    return parseComposePortOutput(output);
+  } catch {
+    return undefined;
+  }
+}
+
+export async function resolveWorktreePorts({
+  env = process.env,
+  runningPostgresPort,
+  worktreeRoot,
+}: {
+  env?: NodeJS.ProcessEnv;
+  runningPostgresPort?: number;
+  worktreeRoot: string;
 }): Promise<WorktreePortBundle> {
   if (!worktreeRoot) {
     throw new Error("worktreeRoot is required to resolve worktree ports.");
   }
+
+  const existingPostgresPort =
+    runningPostgresPort === undefined
+      ? undefined
+      : parsePortLike(String(runningPostgresPort), "runningPostgresPort");
 
   const conductorBasePort = parsePortLike(
     env[CONDUCTOR_PORT_ENV],
@@ -419,19 +472,38 @@ export async function resolveWorktreePorts({
     worktreeRoot,
   });
   const postgres =
-    conductorBasePort === undefined
-      ? await resolveAvailablePort(postgresResolution, postgresReservedPorts)
-      : resolveFixedPortInRange(postgresResolution, postgresReservedPorts);
+    existingPostgresPort === undefined
+      ? conductorBasePort === undefined
+        ? await resolveAvailablePort(postgresResolution, postgresReservedPorts)
+        : resolveFixedPortInRange(postgresResolution, postgresReservedPorts)
+      : {
+          ...postgresResolution,
+          offset:
+            !postgresResolution.usingExplicitPort &&
+            existingPostgresPort >= postgresResolution.basePort &&
+            existingPostgresPort <
+              postgresResolution.basePort + postgresResolution.span
+              ? existingPostgresPort - postgresResolution.basePort
+              : postgresResolution.offset,
+          port: existingPostgresPort,
+        };
+
+  if (existingPostgresPort !== undefined && existingPostgresPort === app.port) {
+    throw new Error(
+      `Running Postgres port ${existingPostgresPort} conflicts with app port ${app.port}.`,
+    );
+  }
 
   return {
     app,
     conductorPort: conductorBasePort,
     postgres,
     databaseUrl:
-      conductorBasePort === undefined
+      conductorBasePort === undefined && existingPostgresPort === undefined
         ? env.DATABASE_URL || buildDatabaseUrl(env, postgres.port)
         : buildDatabaseUrl(env, postgres.port),
     projectName: worktreeComposeProjectName(worktreeRoot),
+    reusedRunningPostgresPort: existingPostgresPort !== undefined,
     worktreeRoot: resolve(worktreeRoot),
   };
 }
@@ -524,7 +596,14 @@ export function formatWorktreePortSummary(bundle: WorktreePortBundle): string {
     "",
   ];
 
-  if (bundle.app.usingExplicitPort || bundle.postgres.usingExplicitPort) {
+  if (bundle.reusedRunningPostgresPort) {
+    lines.push(
+      `Port source: running Docker Compose Postgres on ${bundle.postgres.port}`,
+    );
+  } else if (
+    bundle.app.usingExplicitPort ||
+    bundle.postgres.usingExplicitPort
+  ) {
     const conductorRange =
       bundle.conductorPort === undefined
         ? ""

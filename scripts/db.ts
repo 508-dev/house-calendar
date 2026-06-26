@@ -1,5 +1,9 @@
 import { spawn } from "node:child_process";
-import { buildWorktreeEnv, resolveWorktreePorts } from "./worktree-ports";
+import {
+  buildWorktreeEnv,
+  detectRunningComposePostgresPort,
+  resolveWorktreePorts,
+} from "./worktree-ports";
 
 const COMMANDS = {
   logs: ["logs", "-f", "postgres"],
@@ -20,7 +24,11 @@ function parseCommand(argv: string[]): DbCommand {
 }
 
 const command = parseCommand(Bun.argv.slice(2));
-const bundle = await resolveWorktreePorts({ worktreeRoot: process.cwd() });
+const worktreeRoot = process.cwd();
+const bundle = await resolveWorktreePorts({
+  runningPostgresPort: detectRunningComposePostgresPort({ worktreeRoot }),
+  worktreeRoot,
+});
 const child = spawn("docker", ["compose", ...COMMANDS[command]], {
   cwd: bundle.worktreeRoot,
   env: buildWorktreeEnv(bundle, process.env),
