@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   CONDUCTOR_PORT_SPAN,
+  formatWorktreePortSummary,
   resolveWorktreePorts,
   worktreePortOffset,
   writeWorktreeEnvFiles,
@@ -112,7 +113,7 @@ describe("worktree ports", () => {
     expect(envFile).toContain('POSTGRES_PASSWORD="p@ss:/#word"');
   });
 
-  test("uses the Conductor 10-port range when CONDUCTOR_PORT is set", async () => {
+  test("uses stable offsets in the Conductor 10-port range when CONDUCTOR_PORT is set", async () => {
     const conductorPort = 62000;
     const bundle = await resolveWorktreePorts({
       worktreeRoot: join(tmpdir(), "house-calendar-test-conductor-range"),
@@ -128,16 +129,60 @@ describe("worktree ports", () => {
       },
     });
 
-    expect(bundle.app.port).toBeGreaterThanOrEqual(conductorPort);
-    expect(bundle.app.port).toBeLessThan(conductorPort + CONDUCTOR_PORT_SPAN);
-    expect(bundle.postgres.port).toBeGreaterThanOrEqual(conductorPort);
-    expect(bundle.postgres.port).toBeLessThan(
-      conductorPort + CONDUCTOR_PORT_SPAN,
-    );
+    expect(bundle.app.port).toBe(conductorPort);
+    expect(bundle.postgres.port).toBe(conductorPort + 1);
     expect(bundle.postgres.port).not.toBe(bundle.app.port);
     expect(bundle.app.span).toBe(CONDUCTOR_PORT_SPAN);
     expect(bundle.postgres.span).toBe(CONDUCTOR_PORT_SPAN);
     expect(bundle.databaseUrl).toContain(`@127.0.0.1:${bundle.postgres.port}/`);
+  });
+
+  test("prints local URLs before diagnostic details", async () => {
+    const conductorPort = 62010;
+    const bundle = await resolveWorktreePorts({
+      worktreeRoot: join(tmpdir(), "house-calendar-test-summary"),
+      env: {
+        CONDUCTOR_PORT: String(conductorPort),
+        NODE_ENV: "test",
+      },
+    });
+
+    const lines = formatWorktreePortSummary(bundle).split("\n");
+
+    expect(lines[0]).toBe(`App URL: http://127.0.0.1:${conductorPort}`);
+    expect(lines[1]).toBe(
+      `Postgres URL: postgresql://127.0.0.1:${conductorPort + 1}`,
+    );
+    expect(lines[3]).toBe("");
+    expect(lines[4]).toBe(
+      `Port source: CONDUCTOR_PORT=${conductorPort} (${conductorPort}-${conductorPort + CONDUCTOR_PORT_SPAN - 1})`,
+    );
+  });
+
+  test("does not reprobe Conductor companion ports when one is occupied", async () => {
+    const { basePort: conductorPort, server } =
+      await reserveBasePortWithOccupiedOffset(CONDUCTOR_PORT_SPAN, 1);
+
+    try {
+      const bundle = await resolveWorktreePorts({
+        worktreeRoot: join(
+          tmpdir(),
+          "house-calendar-test-conductor-occupied-postgres",
+        ),
+        env: {
+          CONDUCTOR_PORT: String(conductorPort),
+          NODE_ENV: "test",
+        },
+      });
+
+      expect(bundle.app.port).toBe(conductorPort);
+      expect(bundle.postgres.port).toBe(conductorPort + 1);
+      expect(bundle.databaseUrl).toContain(`@127.0.0.1:${conductorPort + 1}/`);
+    } finally {
+      await new Promise<void>((resolveClose) =>
+        server.close(() => resolveClose()),
+      );
+    }
   });
 
   test("preserves explicit worktree ports over CONDUCTOR_PORT", async () => {

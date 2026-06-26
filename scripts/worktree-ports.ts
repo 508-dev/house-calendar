@@ -38,6 +38,7 @@ type WorktreePortBundle = {
   app: PortResolution;
   postgres: PortResolution;
   databaseUrl: string;
+  conductorPort?: number;
   projectName: string;
   worktreeRoot: string;
 };
@@ -107,6 +108,7 @@ function resolvePort({
   fallbackPortEnvName,
   ignoreFallbackExplicitPort = false,
   pathKey,
+  preferredOffset,
   span,
   worktreeRoot,
 }: {
@@ -119,6 +121,7 @@ function resolvePort({
   fallbackPortEnvName?: string;
   ignoreFallbackExplicitPort?: boolean;
   pathKey: string;
+  preferredOffset?: number;
   span: number;
   worktreeRoot: string;
 }): Omit<PortResolution, "port"> & { port?: number } {
@@ -161,7 +164,7 @@ function resolvePort({
 
       return {
         basePort: resolvedBasePort,
-        offset: worktreePortOffset(worktreeRoot, span),
+        offset: preferredOffset ?? worktreePortOffset(worktreeRoot, span),
         pathKey,
         span,
         usingExplicitPort: false,
@@ -176,7 +179,7 @@ function resolvePort({
 
     return {
       basePort: defaultBasePort,
-      offset: worktreePortOffset(worktreeRoot, span),
+      offset: preferredOffset ?? worktreePortOffset(worktreeRoot, span),
       pathKey,
       port: explicitPort,
       span,
@@ -190,7 +193,7 @@ function resolvePort({
     );
   }
 
-  const offset = worktreePortOffset(worktreeRoot, span);
+  const offset = preferredOffset ?? worktreePortOffset(worktreeRoot, span);
 
   return {
     basePort: resolvedBasePort,
@@ -280,6 +283,24 @@ async function resolveAvailablePort(
   );
 }
 
+function resolveFixedPort(
+  resolution: Omit<PortResolution, "port"> & { port?: number },
+  disallowedPorts?: ReadonlySet<number>,
+): PortResolution {
+  const port = resolution.port ?? resolution.basePort + resolution.offset;
+
+  if (disallowedPorts?.has(port)) {
+    throw new Error(
+      `Port ${port} is already reserved or blocked for this service.`,
+    );
+  }
+
+  return {
+    ...resolution,
+    port,
+  };
+}
+
 function buildDatabaseUrl(
   env: NodeJS.ProcessEnv,
   postgresPort: number,
@@ -324,43 +345,48 @@ export async function resolveWorktreePorts({
   const pathKey = worktreePathKey(worktreeRoot);
   const ignoreFallbackExplicitPort = conductorBasePort !== undefined;
 
-  const app = await resolveAvailablePort(
-    resolvePort({
-      basePort: conductorBasePort,
-      basePortEnvName: WORKTREE_DEV_BASE_PORT_ENV,
-      defaultBasePort: DEFAULT_WORKTREE_DEV_BASE_PORT,
-      disallowedPorts: CHROME_BLOCKED_WEB_PORTS,
-      env,
-      explicitPortEnvName: WORKTREE_DEV_PORT_ENV,
-      fallbackPortEnvName: "PORT",
-      ignoreFallbackExplicitPort,
-      pathKey,
-      span,
-      worktreeRoot,
-    }),
-    CHROME_BLOCKED_WEB_PORTS,
-  );
+  const appResolution = resolvePort({
+    basePort: conductorBasePort,
+    basePortEnvName: WORKTREE_DEV_BASE_PORT_ENV,
+    defaultBasePort: DEFAULT_WORKTREE_DEV_BASE_PORT,
+    disallowedPorts: CHROME_BLOCKED_WEB_PORTS,
+    env,
+    explicitPortEnvName: WORKTREE_DEV_PORT_ENV,
+    fallbackPortEnvName: "PORT",
+    ignoreFallbackExplicitPort,
+    pathKey,
+    preferredOffset: conductorBasePort === undefined ? undefined : 0,
+    span,
+    worktreeRoot,
+  });
+  const app =
+    conductorBasePort === undefined
+      ? await resolveAvailablePort(appResolution, CHROME_BLOCKED_WEB_PORTS)
+      : resolveFixedPort(appResolution, CHROME_BLOCKED_WEB_PORTS);
 
   const postgresReservedPorts =
     conductorBasePort !== undefined ? new Set([app.port]) : undefined;
-  const postgres = await resolveAvailablePort(
-    resolvePort({
-      basePort: conductorBasePort,
-      basePortEnvName: WORKTREE_POSTGRES_BASE_PORT_ENV,
-      defaultBasePort: DEFAULT_WORKTREE_POSTGRES_BASE_PORT,
-      env,
-      explicitPortEnvName: WORKTREE_POSTGRES_PORT_ENV,
-      fallbackPortEnvName: "POSTGRES_PORT",
-      ignoreFallbackExplicitPort,
-      pathKey,
-      span,
-      worktreeRoot,
-    }),
-    postgresReservedPorts,
-  );
+  const postgresResolution = resolvePort({
+    basePort: conductorBasePort,
+    basePortEnvName: WORKTREE_POSTGRES_BASE_PORT_ENV,
+    defaultBasePort: DEFAULT_WORKTREE_POSTGRES_BASE_PORT,
+    env,
+    explicitPortEnvName: WORKTREE_POSTGRES_PORT_ENV,
+    fallbackPortEnvName: "POSTGRES_PORT",
+    ignoreFallbackExplicitPort,
+    pathKey,
+    preferredOffset: conductorBasePort === undefined ? undefined : 1,
+    span,
+    worktreeRoot,
+  });
+  const postgres =
+    conductorBasePort === undefined
+      ? await resolveAvailablePort(postgresResolution, postgresReservedPorts)
+      : resolveFixedPort(postgresResolution, postgresReservedPorts);
 
   return {
     app,
+    conductorPort: conductorBasePort,
     postgres,
     databaseUrl:
       conductorBasePort === undefined
@@ -369,6 +395,14 @@ export async function resolveWorktreePorts({
     projectName: worktreeComposeProjectName(worktreeRoot),
     worktreeRoot: resolve(worktreeRoot),
   };
+}
+
+export function appUrl(bundle: WorktreePortBundle): string {
+  return `http://127.0.0.1:${bundle.app.port}`;
+}
+
+function postgresUrl(bundle: WorktreePortBundle): string {
+  return `postgresql://127.0.0.1:${bundle.postgres.port}`;
 }
 
 function formatDotenvValue(value: string): string {
@@ -410,13 +444,44 @@ export function writeWorktreeEnvFiles(
   );
 }
 
+export function formatWorktreePortSummary(bundle: WorktreePortBundle): string {
+  const lines = [
+    `App URL: ${appUrl(bundle)}`,
+    `Postgres URL: ${postgresUrl(bundle)}`,
+    `Database URL: ${bundle.databaseUrl}`,
+    "",
+  ];
+
+  if (bundle.conductorPort !== undefined) {
+    lines.push(
+      `Port source: ${CONDUCTOR_PORT_ENV}=${bundle.conductorPort} (${bundle.conductorPort}-${bundle.conductorPort + CONDUCTOR_PORT_SPAN - 1})`,
+    );
+  } else if (
+    bundle.app.usingExplicitPort ||
+    bundle.postgres.usingExplicitPort
+  ) {
+    lines.push(
+      `Port source: explicit override (app ${bundle.app.port}, Postgres ${bundle.postgres.port})`,
+    );
+  } else {
+    lines.push(
+      `Port source: worktree hash (app ${bundle.app.basePort}-${bundle.app.basePort + bundle.app.span - 1}, Postgres ${bundle.postgres.basePort}-${bundle.postgres.basePort + bundle.postgres.span - 1})`,
+    );
+  }
+
+  lines.push(
+    `Worktree: ${bundle.worktreeRoot}`,
+    `Compose project: ${bundle.projectName}`,
+    `Path key: ${bundle.app.pathKey}`,
+    `App port: ${bundle.app.port}`,
+    `Postgres port: ${bundle.postgres.port}`,
+  );
+
+  return lines.join("\n");
+}
+
 function printSummary(bundle: WorktreePortBundle): void {
-  console.log(`Worktree: ${bundle.worktreeRoot}`);
-  console.log(`Compose project: ${bundle.projectName}`);
-  console.log(`Path key: ${bundle.app.pathKey}`);
-  console.log(`App port: ${bundle.app.port}`);
-  console.log(`Postgres port: ${bundle.postgres.port}`);
-  console.log(`Database URL: ${bundle.databaseUrl}`);
+  console.log(formatWorktreePortSummary(bundle));
 }
 
 if (import.meta.main) {
