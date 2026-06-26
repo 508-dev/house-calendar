@@ -1,10 +1,14 @@
 import { spawn } from "node:child_process";
-import { resolveWorktreePorts, writeWorktreeEnvFiles } from "./worktree-ports";
+import {
+  appUrl,
+  resolveWorktreePorts,
+  writeWorktreeEnvFiles,
+} from "./worktree-ports";
 
 const bundle = await resolveWorktreePorts({ worktreeRoot: process.cwd() });
 writeWorktreeEnvFiles(bundle);
 
-console.log(`Starting TanStack Start on http://127.0.0.1:${bundle.app.port}`);
+console.log(`Starting TanStack Start on ${appUrl(bundle)}`);
 console.log(
   `Expected Postgres on postgresql://127.0.0.1:${bundle.postgres.port}`,
 );
