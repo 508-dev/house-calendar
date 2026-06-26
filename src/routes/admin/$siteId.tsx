@@ -17,6 +17,16 @@ type AdminSitePageData = Extract<
   { kind: "ready" }
 >;
 
+type PasswordErrorField = "confirmNewPassword" | "currentPassword";
+
+function parsePasswordErrorField(
+  value: unknown,
+): PasswordErrorField | undefined {
+  return value === "confirmNewPassword" || value === "currentPassword"
+    ? value
+    : undefined;
+}
+
 export const Route = createFileRoute("/admin/$siteId")({
   component: AdminSitePage,
   head: ({ loaderData }) => {
@@ -50,6 +60,7 @@ export const Route = createFileRoute("/admin/$siteId")({
       typeof search.passwordError === "string"
         ? search.passwordError
         : undefined,
+    passwordErrorField: parsePasswordErrorField(search.passwordErrorField),
     sync: typeof search.sync === "string" ? search.sync : undefined,
   }),
 });
@@ -101,26 +112,6 @@ export function formatEventRange(
 
 function formatConfidence(confidence: number): string {
   return `${Math.round(confidence * 100)}% confidence`;
-}
-
-function getPasswordChangeFieldError(
-  error: string | undefined,
-): { field: "confirmNewPassword" | "currentPassword"; message: string } | null {
-  if (error === "Current password is incorrect.") {
-    return {
-      field: "currentPassword",
-      message: error,
-    };
-  }
-
-  if (error === "New passwords do not match.") {
-    return {
-      field: "confirmNewPassword",
-      message: error,
-    };
-  }
-
-  return null;
 }
 
 export function describeInterpretation(
@@ -284,22 +275,18 @@ export function buildParsedFieldRows(
 
 function AdminSitePage() {
   const data = Route.useLoaderData() as AdminSitePageData | undefined;
-  const { error, message, passwordError } = Route.useSearch();
+  const { error, message, passwordError, passwordErrorField } =
+    Route.useSearch();
   const [clientPasswordError, setClientPasswordError] = useState<
     string | undefined
   >();
-  const passwordFieldError = getPasswordChangeFieldError(passwordError);
   const currentPasswordError =
-    passwordFieldError?.field === "currentPassword"
-      ? passwordFieldError.message
-      : undefined;
+    passwordErrorField === "currentPassword" ? passwordError : undefined;
   const confirmNewPasswordError =
     clientPasswordError ??
-    (passwordFieldError?.field === "confirmNewPassword"
-      ? passwordFieldError.message
-      : undefined);
+    (passwordErrorField === "confirmNewPassword" ? passwordError : undefined);
   const passwordFormError =
-    passwordError && !passwordFieldError ? passwordError : undefined;
+    passwordError && !passwordErrorField ? passwordError : undefined;
 
   if (!data) {
     return null;

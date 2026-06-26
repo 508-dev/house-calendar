@@ -101,6 +101,7 @@ type AdminPasswordChangeResult =
   | {
       error: string;
       ok: false;
+      passwordErrorField?: "currentPassword";
       requiresLogin?: boolean;
     }
   | {
@@ -178,17 +179,27 @@ function isAdminAlreadyCompleteError(error: unknown): boolean {
 
 function userFacingAuthError(
   message: string,
-  options?: { requiresLogin?: boolean },
-): Error & { requiresLogin?: boolean; userFacing: true } {
+  options?: {
+    passwordErrorField?: "currentPassword";
+    requiresLogin?: boolean;
+  },
+): Error & {
+  passwordErrorField?: "currentPassword";
+  requiresLogin?: boolean;
+  userFacing: true;
+} {
   return Object.assign(new Error(message), {
+    passwordErrorField: options?.passwordErrorField,
     requiresLogin: options?.requiresLogin,
     userFacing: true as const,
   });
 }
 
-function isUserFacingAuthError(
-  error: unknown,
-): error is Error & { requiresLogin?: boolean; userFacing: true } {
+function isUserFacingAuthError(error: unknown): error is Error & {
+  passwordErrorField?: "currentPassword";
+  requiresLogin?: boolean;
+  userFacing: true;
+} {
   return (
     error instanceof Error && "userFacing" in error && error.userFacing === true
   );
@@ -843,9 +854,8 @@ export async function changeAdminPassword(input: {
   await ensureAuthSchema();
   const db = getDb();
   const currentSessionTokenHash = hashSessionToken(input.currentSessionToken);
-  const protectionFullyDisabled = isAdminLoginProtectionFullyDisabled(
-    input.adminSecurity,
-  );
+  const passwordChangeThrottleEnabled =
+    input.adminSecurity.loginThrottle.enabled;
 
   try {
     const [user] = await db
@@ -881,7 +891,7 @@ export async function changeAdminPassword(input: {
     }
 
     if (!verifyPassword(parsed.data.currentPassword, user.passwordHash)) {
-      if (!protectionFullyDisabled) {
+      if (passwordChangeThrottleEnabled) {
         await recordAdminLoginFailure({
           adminSecurity: input.adminSecurity,
           email: user.email,
@@ -891,10 +901,12 @@ export async function changeAdminPassword(input: {
         await delayAfterFailedAdminLogin(input.adminSecurity);
       }
 
-      throw userFacingAuthError("Current password is incorrect.");
+      throw userFacingAuthError("Current password is incorrect.", {
+        passwordErrorField: "currentPassword",
+      });
     }
 
-    if (!protectionFullyDisabled) {
+    if (passwordChangeThrottleEnabled) {
       await clearAdminLoginFailures({
         email: user.email,
         keys: protection.keys,
@@ -934,6 +946,7 @@ export async function changeAdminPassword(input: {
       return {
         error: error.message,
         ok: false,
+        passwordErrorField: error.passwordErrorField,
         requiresLogin: error.requiresLogin === true,
       };
     }

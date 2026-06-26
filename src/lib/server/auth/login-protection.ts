@@ -825,6 +825,7 @@ export async function checkAdminPasswordChangeProtection({
 
   if (
     isAdminLoginProtectionFullyDisabled(adminSecurity) ||
+    !config.throttleEnabled ||
     !serverEnv.DATABASE_URL
   ) {
     return {
@@ -842,7 +843,7 @@ export async function checkAdminPasswordChangeProtection({
     challengeAfterFailures: config.challengeAfterFailures,
     challengeMode: "off",
     failures,
-    throttleEnabled: config.throttleEnabled || config.challengeMode !== "off",
+    throttleEnabled: config.throttleEnabled,
   });
 
   if (lockedOut) {

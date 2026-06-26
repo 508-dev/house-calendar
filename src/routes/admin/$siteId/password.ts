@@ -65,6 +65,7 @@ export const Route = createFileRoute("/admin/$siteId/password")({
         if (newPassword !== confirmNewPassword) {
           return redirectToAdmin(request, params.siteId, {
             passwordError: "New passwords do not match.",
+            passwordErrorField: "confirmNewPassword",
           });
         }
 
@@ -87,6 +88,9 @@ export const Route = createFileRoute("/admin/$siteId/password")({
 
           return redirectToAdmin(request, params.siteId, {
             passwordError: result.error,
+            ...(result.passwordErrorField
+              ? { passwordErrorField: result.passwordErrorField }
+              : {}),
           });
         }
 

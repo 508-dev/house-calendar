@@ -455,28 +455,24 @@ describe("checkAdminPasswordChangeProtection", () => {
     }
   });
 
-  test("keeps attempt keys when login challenge is enabled without throttling", async () => {
+  test("skips password-change DB protection when throttling is disabled", async () => {
     serverEnv.ADMIN_LOGIN_IDENTIFIER_PEPPER = "test-login-identifier-pepper";
     serverEnv.DATABASE_URL = "postgres://test";
 
-    globalThis.__houseCalendarSql = (async <T = unknown>(
-      strings: TemplateStringsArray,
-    ): Promise<T> => {
-      const query = strings.join("?");
-
-      if (query.includes("select exists")) {
-        return [{ value: false }] as T;
-      }
-
-      return [] as T;
+    globalThis.__houseCalendarSql = (async (): Promise<unknown> => {
+      throw new Error("unexpected sql query");
     }) as unknown as typeof globalThis.__houseCalendarSql;
     globalThis.__houseCalendarDb = {
       delete: () => ({
-        where: async () => undefined,
+        where: async () => {
+          throw new Error("unexpected cleanup");
+        },
       }),
       select: () => ({
         from: () => ({
-          where: async () => [{ value: 0 }],
+          where: async () => {
+            throw new Error("unexpected count");
+          },
         }),
       }),
     } as unknown as typeof globalThis.__houseCalendarDb;
@@ -497,10 +493,9 @@ describe("checkAdminPasswordChangeProtection", () => {
       email: "admin@example.com",
     });
 
-    expect(result.ok).toBe(true);
-
-    if (result.ok) {
-      expect(typeof result.keys.emailHash).toBe("string");
-    }
+    expect(result).toEqual({
+      keys: {},
+      ok: true,
+    });
   });
 });

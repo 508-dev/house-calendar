@@ -156,6 +156,39 @@ describe("changeAdminPassword", () => {
     expect(result).toEqual({
       error: "Current password is incorrect.",
       ok: false,
+      passwordErrorField: "currentPassword",
+      requiresLogin: false,
+    });
+    expect(operations.updatedPasswordHash).toBeNull();
+    expect(operations.deletedSessions).toBe(false);
+    expect(operations.insertedSession).toBeNull();
+  });
+
+  test("does not record password-change attempts when only login challenges are enabled", async () => {
+    serverEnv.DATABASE_URL = "postgres://test";
+    installFakeSql();
+    const operations = createPasswordChangeDb({
+      currentPasswordHash: hashPassword("current password"),
+    });
+
+    const result = await changeAdminPassword({
+      adminSecurity: {
+        ...baseAdminSecurity(),
+        loginChallenge: {
+          afterFailures: 1,
+          mode: "always",
+          provider: "turnstile",
+        },
+      },
+      currentPassword: "wrong password",
+      currentSessionToken: "current-session-token",
+      newPassword: "new strong password",
+    });
+
+    expect(result).toEqual({
+      error: "Current password is incorrect.",
+      ok: false,
+      passwordErrorField: "currentPassword",
       requiresLogin: false,
     });
     expect(operations.updatedPasswordHash).toBeNull();
