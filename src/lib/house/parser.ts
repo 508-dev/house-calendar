@@ -61,7 +61,11 @@ function roomHintKeys(value: string): string[] {
   const keys = new Set([normalizedValue, compactValue]);
   const withoutRoomSuffix = normalizedValue.replace(/\s+room$/i, "").trim();
 
-  if (withoutRoomSuffix !== normalizedValue && withoutRoomSuffix.length >= 4) {
+  if (
+    withoutRoomSuffix !== normalizedValue &&
+    withoutRoomSuffix.length >= 4 &&
+    !SHARED_SPACE_RE.test(withoutRoomSuffix)
+  ) {
     keys.add(withoutRoomSuffix);
     keys.add(withoutRoomSuffix.replace(/[^a-z0-9]+/g, ""));
   }

@@ -146,6 +146,25 @@ describe("parseEventTitle", () => {
     expect(sofaRoom.roomId).toBe("third-floor");
   });
 
+  test("keeps shared-space shorthand hints out of room suffix matching", () => {
+    const config = structuredClone(exampleHouseConfig);
+    config.rooms.push({
+      aliases: ["sofa room", "floor room"],
+      id: "shared-stem-room",
+      name: "Shared stem room",
+    });
+
+    const sofa = parseEventTitle("Charlie crashes (sofa)", config);
+    const floor = parseEventTitle("Charlie crashes (floor)", config);
+
+    expect(sofa.type).toBe("stay");
+    expect(sofa.scope).toBe("shared_space");
+    expect(sofa.roomId).toBeUndefined();
+    expect(floor.type).toBe("stay");
+    expect(floor.scope).toBe("shared_space");
+    expect(floor.roomId).toBeUndefined();
+  });
+
   test("matches compact room aliases in stay hints", () => {
     const parsed = parseEventTitle(
       "Charles Chen stays (guestroom)",
