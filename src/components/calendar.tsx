@@ -806,7 +806,9 @@ export function Calendar({
                                                   ? isPastDay
                                                     ? "bg-stone-300"
                                                     : "bg-sky-400/80"
-                                                  : roomBarClass
+                                                  : room.status === "unknown"
+                                                    ? "bg-stone-400"
+                                                    : roomBarClass
                                             }`}
                                           />
                                         ))}

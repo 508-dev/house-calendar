@@ -188,6 +188,50 @@ describe("parseEventTitle", () => {
     expect(parsed.roomId).toBe("my-room");
   });
 
+  test("recognizes room assignment placeholders without selecting a room", () => {
+    const titles = [
+      "Charlie stays (unassigned)",
+      "Charlie stays [UNKNOWN ROOM]",
+      "Charlie crashes (room TBD)",
+      "Charlie stays (room undecided)",
+      "Charlie stays (no room assigned)",
+      "Charlie stays (room not yet assigned)",
+      "Charlie stays (room-to-be-decided)",
+      "Charlie stays (guest room, unassigned)",
+    ];
+
+    for (const title of titles) {
+      const parsed = parseEventTitle(title, exampleHouseConfig);
+      expect(parsed.type).toBe("stay");
+      expect(parsed.scope).toBe("unassigned_room");
+      expect(parsed.roomId).toBeUndefined();
+      expect(parsed.guestName).toBe("Charlie");
+      expect(parsed.visibility).toBe("private");
+    }
+  });
+
+  test("preserves tentative status for an unassigned room stay", () => {
+    const parsed = parseEventTitle(
+      "Charlie maybe stays (unknown room, tentative)",
+      exampleHouseConfig,
+    );
+
+    expect(parsed.scope).toBe("unassigned_room");
+    expect(parsed.stayStatus).toBe("tentative");
+  });
+
+  test("keeps a known housemate's unassigned stay private", () => {
+    const parsed = parseEventTitle(
+      "Michael stays (unassigned)",
+      exampleHouseConfig,
+    );
+
+    expect(parsed.scope).toBe("unassigned_room");
+    expect(parsed.personId).toBe("michael");
+    expect(parsed.guestName).toBeUndefined();
+    expect(parsed.visibility).toBe("private");
+  });
+
   test("parses templated public housemate travel", () => {
     const parsed = parseEventTitle(
       "Michael out of Japan (Europe)",

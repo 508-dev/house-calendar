@@ -46,6 +46,7 @@ events into availability and a small amount of redacted viewer-facing context.
 - Use `crashes` as a stay keyword when that better matches the source calendar language, such as `Someone crashes (guest room)`.
 - Use couch, sofa, or floor language for shared-space crashes, such as `Someone crashes on the couch` or `Someone crashes (floor)`. These block whole-house availability, keep every configured room free, and show a generic shared-space note.
 - Use `maybe stay` or `(tentative)` in the title when the stay is not confirmed yet.
+- Use `(unassigned)`, `(unknown room)`, or `(room TBD)` when someone will stay but their room has not been chosen. The day and affected room availability show as needing interpretation until you assign a room.
 - Use the configured housemate shorthand for presence and travel, such as `Michael (TPE)` or `Michael in Tokyo (not staying)`.
 - Use short timed events for same-day logistics you want viewers to see, such as `Cleaner 1pm-3:30pm JST`.
 

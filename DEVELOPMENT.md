@@ -314,6 +314,7 @@ Recommended patterns:
 - Use `crashes` as a stay keyword when that matches how you write the event.
 - Use couch, sofa, or floor language for shared-space crashes that should block the whole house without occupying a configured room.
 - Use `maybe stay` or `(tentative)` when the stay is not confirmed.
+- Use `(unassigned)`, `(unknown room)`, or `(room TBD)` for a stay whose room has not been chosen. These mark the day and unresolved rooms as needing interpretation; update the title when the room is decided.
 - Use housemate presence titles that match your configured rules, such as `Michael (TPE)` or `Michael in Tokyo (not staying)`.
 - Use timed events like `Cleaner 1pm-3:30pm JST` only for logistics you are comfortable showing to trusted viewers.
 

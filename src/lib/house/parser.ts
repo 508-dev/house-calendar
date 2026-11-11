@@ -14,6 +14,8 @@ const SHARED_SPACE_RE = /\b(couch|sofa|floor)\b/;
 const NOT_STAYING_SUFFIX_RE =
   /^(.*?)(?:\s*,\s*not staying|\s*\(\s*not staying\s*\))$/i;
 const TENTATIVE_HINT_RE = /^(tentative|maybe)$/i;
+const UNASSIGNED_ROOM_HINT_RE =
+  /^(?:(?:room )?(?:unassigned|unknown|undecided|tbd|pending)|(?:unassigned|unknown|undecided|tbd|pending) room|room (?:not (?:yet )?(?:assigned|decided)|to be (?:assigned|decided))|no room (?:assigned|yet))$/i;
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -53,6 +55,12 @@ function isTentativeHint(value: string): boolean {
 
 function isNotStayingHint(value: string): boolean {
   return value.trim().toLowerCase() === "not staying";
+}
+
+function isUnassignedRoomHint(value: string): boolean {
+  return UNASSIGNED_ROOM_HINT_RE.test(
+    value.trim().replace(/[-_]+/g, " ").replace(/\s+/g, " "),
+  );
 }
 
 function roomHintKeys(value: string): string[] {
@@ -602,6 +610,23 @@ export function parseEventTitle(
   );
   const personId = findPersonId(normalizedTitle, config);
   const guestName = extractGuestName(title, normalizedTitle, personId);
+  if (
+    STAY_RE.test(normalizedTitle) &&
+    extractBracketHints(normalizedTitle).some(isUnassignedRoomHint)
+  ) {
+    return {
+      rawTitle: title,
+      normalizedTitle,
+      type: "stay",
+      scope: "unassigned_room",
+      personId,
+      guestName,
+      stayStatus: inferStayStatus(normalizedTitle),
+      visibility: "private",
+      confidence: 0.9,
+    };
+  }
+
   const explicitMatch = matchExplicitRule(
     [
       ...new Set([
