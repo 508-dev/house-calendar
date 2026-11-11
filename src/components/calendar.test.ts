@@ -7,6 +7,7 @@ import {
   getAnchorPreviewPosition,
   getPointerPreviewPosition,
   getPreviewVerticalClipPath,
+  getRoomStatusLabel,
   getWholeHouseDetailLabel,
   isAnchorVisibleInHorizontalScroller,
   resolveDayEventText,
@@ -187,6 +188,24 @@ describe("buildDayAriaLabel", () => {
     });
 
     expect(label).toBe("May 1, 2026. Occupied. Room occupied");
+  });
+
+  test("does not describe unassigned rooms as free", () => {
+    const day: DailyAvailability = {
+      ...buildDay("2026-05-01"),
+      rooms: [
+        { id: "my-room", name: "My room", status: "occupied" },
+        { id: "guest-room", name: "Guest room", status: "unknown" },
+      ],
+      status: "unknown",
+    };
+
+    expect(buildDayAriaLabel(day)).toBe(
+      "May 1, 2026. Needs interpretation. Room availability needs interpretation",
+    );
+    expect(getRoomStatusLabel(day.rooms[1]?.status ?? "free")).toBe(
+      "Needs interpretation",
+    );
   });
 
   test("includes day event counts when annotations are present", () => {

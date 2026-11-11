@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { parseEventTitle } from "@/lib/house/parser";
 import type {
   HouseConfig,
   ParsedCalendarEvent,
@@ -193,6 +194,26 @@ describe("admin timed event diagnostics", () => {
         value: "No room occupied",
       },
     ]);
+  });
+
+  test("describes unassigned room stays as pending room decisions", () => {
+    const raw: RawCalendarEvent = {
+      allDay: true,
+      endDate: "2026-04-30",
+      id: "unassigned-room-1",
+      startDate: "2026-04-29",
+      title: "Charlie stays (unknown room)",
+      visibility: "public",
+    };
+    const parsed = parseEventTitle(raw.title, houseConfig);
+
+    expect(describeInterpretation(parsed, houseConfig, raw)).toBe(
+      "Charlie: stay with room not yet assigned",
+    );
+    expect(buildParsedFieldRows(parsed, houseConfig, raw)).toContainEqual({
+      label: "Room",
+      value: "Not yet assigned",
+    });
   });
 
   test("shows presence status rows for tentative presence", () => {

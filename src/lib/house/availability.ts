@@ -10,12 +10,16 @@ import {
   rawCalendarEventSchema,
 } from "./types";
 
-type WorkingDay = Omit<DailyAvailability, "status"> & {
+type WorkingDay = Omit<DailyAvailability, "status" | "rooms"> & {
   hasUnknownStay: boolean;
   houseBlockStatus: "free" | "tentative" | "occupied";
   presenceRoomStatusByPerson: Map<string, "free" | "tentative" | "occupied">;
   presenceStatesByPerson: Map<string, "in" | "out" | "unknown">;
-  rooms: DailyAvailability["rooms"];
+  rooms: Array<
+    Omit<DailyAvailability["rooms"][number], "status"> & {
+      status: "free" | "tentative" | "occupied";
+    }
+  >;
   presence: DailyAvailability["presence"];
 };
 
@@ -349,6 +353,10 @@ export function deriveDailyAvailability(
         }
 
         status = mergeRoomStatus(status, presenceRoomStatus);
+      }
+
+      if (day.hasUnknownStay && status !== "occupied") {
+        return { ...room, status: "unknown" as const };
       }
 
       return status === room.status ? room : { ...room, status };

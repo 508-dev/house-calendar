@@ -54,6 +54,49 @@ describe("deriveDailyAvailability", () => {
     );
 
     expect(days[0]?.status).toBe("unknown");
+    expect(
+      days[0]?.rooms.every((room) => room.status === "unknown"),
+    ).toBeTrue();
+  });
+
+  test("unassigned room stays keep rooms unresolved through the last booked night", () => {
+    const days = deriveDailyAvailability(
+      exampleHouseConfig,
+      [
+        rawCalendarEventSchema.parse({
+          id: "evt-unassigned-room",
+          title: "Charlie stays (unknown room)",
+          startDate: "2026-04-19",
+          endDate: "2026-04-21",
+          allDay: true,
+        }),
+        rawCalendarEventSchema.parse({
+          id: "evt-known-room",
+          title: "Alex stays (guest room)",
+          startDate: "2026-04-19",
+          endDate: "2026-04-20",
+          allDay: true,
+        }),
+      ],
+      "2026-04-19",
+      3,
+    );
+
+    expect(days.map((day) => day.status)).toEqual([
+      "unknown",
+      "unknown",
+      "available",
+    ]);
+    expect(
+      days[0]?.rooms.find((room) => room.id === "guest-room")?.status,
+    ).toBe("occupied");
+    expect(days[0]?.rooms.find((room) => room.id === "my-room")?.status).toBe(
+      "unknown",
+    );
+    expect(
+      days[1]?.rooms.every((room) => room.status === "unknown"),
+    ).toBeTrue();
+    expect(days[2]?.rooms.every((room) => room.status === "free")).toBeTrue();
   });
 
   test("shared-space crashes block whole-house availability without occupying a room", () => {
@@ -145,7 +188,9 @@ describe("deriveDailyAvailability", () => {
     );
 
     expect(days[0]?.status).toBe("unknown");
-    expect(days[0]?.rooms.every((room) => room.status === "free")).toBeTrue();
+    expect(
+      days[0]?.rooms.every((room) => room.status === "unknown"),
+    ).toBeTrue();
     expect(days[0]?.events).toEqual([
       {
         allDay: true,

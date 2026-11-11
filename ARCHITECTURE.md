@@ -607,6 +607,7 @@ The privacy model is not a frontend concern. It must be built into the data pipe
 - raw titles should never be directly rendered to public viewers
 - guest identities should be masked by default
 - housemate presence should only be shown when explicitly configured
+- stays with an unassigned room should leave the day and unresolved rooms marked unknown until a room is chosen; known occupied rooms remain occupied
 - housemate location presence does not always imply room occupancy; explicit `not staying` annotations must keep the default room free
 - sensitive calendar source values must be treated as secrets
 - logs should not dump ICS URLs or signed share tokens

@@ -169,11 +169,16 @@ export function getRoomStatusLabel(
       return "Tentative";
     case "occupied":
       return "Occupied";
+    case "unknown":
+      return "Needs interpretation";
   }
 }
 
 export function formatRoomSummary(day: DailyAvailability): string {
   const hasSingleRoom = day.rooms.length === 1;
+  const unknownCount = day.rooms.filter(
+    (room) => room.status === "unknown",
+  ).length;
   const occupiedCount = day.rooms.filter(
     (room) => room.status === "occupied",
   ).length;
@@ -182,6 +187,12 @@ export function formatRoomSummary(day: DailyAvailability): string {
   ).length;
   const formatRoomCount = (count: number, status: "occupied" | "tentative") =>
     `${count} room${count === 1 ? "" : "s"} ${status}`;
+
+  if (unknownCount > 0) {
+    return hasSingleRoom
+      ? "Room needs interpretation"
+      : "Room availability needs interpretation";
+  }
 
   if (hasSingleRoom) {
     if (occupiedCount > 0) {

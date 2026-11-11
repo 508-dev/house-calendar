@@ -180,6 +180,7 @@ export const presenceStateSchema = z.enum(["in", "out", "unknown"]);
 export const parsedScopeSchema = z.enum([
   "house",
   "room",
+  "unassigned_room",
   "shared_space",
   "location",
   "unknown",
@@ -205,7 +206,7 @@ export const parsedCalendarEventSchema = z.object({
 export const dayRoomStatusSchema = z.object({
   id: z.string(),
   name: z.string(),
-  status: z.enum(["free", "tentative", "occupied"]),
+  status: z.enum(["free", "tentative", "occupied", "unknown"]),
 });
 
 export const dayPresenceSchema = z.object({
