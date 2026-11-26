@@ -197,10 +197,10 @@ Reusing a key with different event data returns `409`. Failures return
 `error.code` and `error.message`.
 
 ```bash
-curl --fail-with-body https://house.example.com/api/sites/tokyo/events \\
-  -H "Authorization: Bearer $GOOGLE_CALENDAR_API_TOKEN_TOKYO" \\
-  -H "Idempotency-Key: $EVENT_REQUEST_UUID" \\
-  -H 'Content-Type: application/json' \\
+curl --fail-with-body https://house.example.com/api/sites/tokyo/events \
+  -H "Authorization: Bearer $GOOGLE_CALENDAR_API_TOKEN_TOKYO" \
+  -H "Idempotency-Key: $EVENT_REQUEST_UUID" \
+  -H 'Content-Type: application/json' \
   --data '{"title":"Someone stays (guest room)","startDate":"2026-12-04","checkoutDate":"2026-12-06"}'
 ```
 
