@@ -234,11 +234,13 @@ export const getAdminSitePageData = createServerFn({ method: "GET" })
     }
 
     const houseConfig = configToHouseConfig(siteConfig);
-    const calendarData = await loadCalendarData({
-      appConfig,
-      houseConfig,
-      siteConfig,
-    });
+    const { getGoogleCalendarAdminData } = await import(
+      "@/lib/server/google-calendar-admin"
+    );
+    const [calendarData, googleCalendar] = await Promise.all([
+      loadCalendarData({ appConfig, houseConfig, siteConfig }),
+      getGoogleCalendarAdminData(siteConfig),
+    ]);
     const today = currentDateInTimeZone(houseConfig.timezone);
     const interpretationRows = calendarData.eventInterpretations
       .filter((row) => row.raw.endDate >= today)
@@ -270,6 +272,7 @@ export const getAdminSitePageData = createServerFn({ method: "GET" })
         source: calendarData.source,
         warnings: calendarData.warnings,
       },
+      googleCalendar,
       houseConfig,
       interpretationRows,
       kind: "ready" as const,

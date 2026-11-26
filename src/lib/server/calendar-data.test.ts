@@ -32,7 +32,9 @@ END:VCALENDAR
 
 mock.module("server-only", () => ({}));
 
-const { loadCalendarData } = await import("./calendar-data");
+const { invalidateCalendarData, loadCalendarData } = await import(
+  "./calendar-data"
+);
 
 const originalFetch = globalThis.fetch;
 const originalNodeEnv = process.env.NODE_ENV;
@@ -87,6 +89,48 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
   setNodeEnv(originalNodeEnv);
   setCalendarUrl(originalCalendarUrl);
+});
+
+test("invalidating a house leaves other houses cached", async () => {
+  setNodeEnv("production");
+  const sites = appConfig.sites.map((site, index) => ({
+    ...site,
+    calendars: [
+      {
+        id: "test",
+        label: "Test",
+        provider: "ics" as const,
+        url: `https://example.test/${index}`,
+      },
+    ],
+  }));
+  const fetchFeed = mock(
+    async (_url: string, _options: RequestInit) => new Response(EMPTY_ICS),
+  );
+  globalThis.fetch = fetchFeed as unknown as typeof fetch;
+  const now = new Date("2026-04-19T00:00:00.000Z");
+
+  try {
+    await Promise.all(
+      sites.map((siteConfig) =>
+        loadCalendarData({ appConfig, siteConfig, forceRefresh: true, now }),
+      ),
+    );
+    expect(fetchFeed).toHaveBeenCalledTimes(2);
+    invalidateCalendarData(sites[0].site.id);
+    await Promise.all(
+      sites.map((siteConfig) =>
+        loadCalendarData({ appConfig, siteConfig, now }),
+      ),
+    );
+    expect(fetchFeed).toHaveBeenCalledTimes(3);
+    expect(fetchFeed.mock.calls[2]).toEqual([
+      "https://example.test/0",
+      { cache: "no-store" },
+    ]);
+  } finally {
+    for (const site of sites) invalidateCalendarData(site.site.id);
+  }
 });
 
 describe("loadCalendarData", () => {

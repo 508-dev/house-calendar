@@ -274,3 +274,8 @@ export async function refreshCalendarData(
 ): Promise<CalendarDataResult> {
   return loadCalendarData({ forceRefresh: true, siteId });
 }
+
+export function invalidateCalendarData(siteId: string): void {
+  calendarDataCache.delete(siteId);
+  calendarDataInFlight.delete(siteId);
+}

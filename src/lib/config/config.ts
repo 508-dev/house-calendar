@@ -161,12 +161,21 @@ export const appCalendarSchema = z.union([
   instanceCalendarUrlSchema,
 ]);
 
+const envNameSchema = z.string().regex(/^[A-Z_][A-Z0-9_]*$/);
+
 export const siteConfigSchema = z
   .object({
     site: instanceSiteSchema,
     calendarInterpretation: calendarInterpretationSchema,
     calendarDisplay: calendarDisplaySchema,
     calendars: z.array(appCalendarSchema).min(1),
+    googleCalendarWrite: z
+      .strictObject({
+        icsSourceId: z.string().min(1),
+        calendarIdEnvVar: envNameSchema,
+        apiTokenEnvVar: envNameSchema.optional(),
+      })
+      .optional(),
     rooms: z.array(roomSchema),
     people: z.array(instancePersonSchema),
     visibleHousemateIds: z.array(z.string()).default([]),
@@ -176,6 +185,18 @@ export const siteConfigSchema = z
   })
   .superRefine((config, ctx) => {
     const roomIds = new Set(config.rooms.map((room) => room.id));
+    const write = config.googleCalendarWrite;
+    if (
+      write &&
+      config.calendars.filter((calendar) => calendar.id === write.icsSourceId)
+        .length !== 1
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Select exactly one existing ICS source for Google writes.",
+        path: ["googleCalendarWrite", "icsSourceId"],
+      });
+    }
 
     for (const [index, person] of config.people.entries()) {
       if (person.defaultRoomId && !roomIds.has(person.defaultRoomId)) {
@@ -197,6 +218,7 @@ export const appConfigSchema = z
   })
   .superRefine((config, ctx) => {
     const siteIds = new Set<string>();
+    const apiTokenNames = new Set<string>();
 
     for (const [index, siteConfig] of config.sites.entries()) {
       const siteId = siteConfig.site.id;
@@ -210,6 +232,16 @@ export const appConfigSchema = z
       }
 
       siteIds.add(siteId);
+
+      const apiTokenName = siteConfig.googleCalendarWrite?.apiTokenEnvVar;
+      if (apiTokenName && apiTokenNames.has(apiTokenName)) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Use a separate API token for each house.",
+          path: ["sites", index, "googleCalendarWrite", "apiTokenEnvVar"],
+        });
+      }
+      if (apiTokenName) apiTokenNames.add(apiTokenName);
     }
 
     if (config.defaultSiteId && !siteIds.has(config.defaultSiteId)) {

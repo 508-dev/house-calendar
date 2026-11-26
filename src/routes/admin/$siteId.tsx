@@ -1,5 +1,6 @@
 import { createFileRoute, notFound, redirect } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
+import { GoogleCalendarAdmin } from "@/components/google-calendar-admin";
 import { SiteTabs } from "@/components/site-tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -60,6 +61,10 @@ export const Route = createFileRoute("/admin/$siteId")({
   },
   validateSearch: (search: Record<string, unknown>) => ({
     error: typeof search.error === "string" ? search.error : undefined,
+    googleCalendar:
+      typeof search.googleCalendar === "string"
+        ? search.googleCalendar
+        : undefined,
     message: typeof search.message === "string" ? search.message : undefined,
     passwordError:
       typeof search.passwordError === "string"
@@ -290,8 +295,14 @@ export function buildParsedFieldRows(
 
 function AdminSitePage() {
   const data = Route.useLoaderData() as AdminSitePageData | undefined;
-  const { error, message, passwordError, passwordErrorField, passwordMessage } =
-    Route.useSearch();
+  const {
+    error,
+    googleCalendar,
+    message,
+    passwordError,
+    passwordErrorField,
+    passwordMessage,
+  } = Route.useSearch();
   const [clientPasswordError, setClientPasswordError] = useState<
     string | undefined
   >();
@@ -340,42 +351,54 @@ function AdminSitePage() {
         <SiteTabs currentSiteId={data.site.id} sites={data.siteTabs} />
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-          <section className="rounded-[2rem] border border-[color:var(--app-card-border)] bg-[color:var(--app-card)] p-6 shadow-[var(--app-shadow)] sm:p-8">
-            <p className="font-[family-name:var(--font-mono)] text-xs uppercase tracking-[0.28em] text-[var(--app-muted)]">
-              Admin
-            </p>
-            <h1 className="mt-3 text-4xl font-semibold tracking-[-0.05em]">
-              {data.site.houseName} control room
-            </h1>
-            <p className="mt-4 max-w-2xl text-base leading-7 text-[var(--app-muted)]">
-              Sync, parser diagnostics, and availability controls are scoped to
-              the selected house.
-            </p>
+          <div className="space-y-6">
+            <section className="rounded-[2rem] border border-[color:var(--app-card-border)] bg-[color:var(--app-card)] p-6 shadow-[var(--app-shadow)] sm:p-8">
+              <p className="font-[family-name:var(--font-mono)] text-xs uppercase tracking-[0.28em] text-[var(--app-muted)]">
+                Admin
+              </p>
+              <h1 className="mt-3 text-4xl font-semibold tracking-[-0.05em]">
+                {data.site.houseName} control room
+              </h1>
+              <p className="mt-4 max-w-2xl text-base leading-7 text-[var(--app-muted)]">
+                Sync, parser diagnostics, and availability controls are scoped
+                to the selected house.
+              </p>
 
-            <div className="mt-6 space-y-4">
-              <Notice kind="error" message={error} />
-              <Notice kind="info" message={message} />
-            </div>
+              <div className="mt-6 space-y-4">
+                <Notice kind="error" message={error} />
+                <Notice kind="info" message={message} />
+              </div>
 
-            <div className="mt-8 grid gap-4 md:grid-cols-2">
-              <AdminStat label="Signed in as" value={data.authEmail} />
-              <AdminStat
-                label="Selected house"
-                value={data.site.houseName}
-                detail={`Site ID: ${data.site.id}`}
+              <div className="mt-8 grid gap-4 md:grid-cols-2">
+                <AdminStat label="Signed in as" value={data.authEmail} />
+                <AdminStat
+                  label="Selected house"
+                  value={data.site.houseName}
+                  detail={`Site ID: ${data.site.id}`}
+                />
+                <AdminStat
+                  label="Last ICS sync"
+                  value={formatTimestamp(data.calendarData.fetchedAt)}
+                  detail={`${data.calendarData.importedEventCount} imported all-day events`}
+                />
+                <AdminStat
+                  label="Cache policy"
+                  value={`${data.calendarData.cacheTtlMinutes} minute TTL`}
+                  detail={`Next refresh after ${formatTimestamp(data.calendarData.nextRefreshAt)}`}
+                />
+              </div>
+            </section>
+
+            {data.googleCalendar && (
+              <GoogleCalendarAdmin
+                key={data.site.id}
+                data={data.googleCalendar}
+                siteId={data.site.id}
+                timezone={data.houseConfig.timezone}
+                notice={googleCalendar}
               />
-              <AdminStat
-                label="Last ICS sync"
-                value={formatTimestamp(data.calendarData.fetchedAt)}
-                detail={`${data.calendarData.importedEventCount} imported all-day events`}
-              />
-              <AdminStat
-                label="Cache policy"
-                value={`${data.calendarData.cacheTtlMinutes} minute TTL`}
-                detail={`Next refresh after ${formatTimestamp(data.calendarData.nextRefreshAt)}`}
-              />
-            </div>
-          </section>
+            )}
+          </div>
 
           <aside className="space-y-4">
             <section className="rounded-[2rem] border border-[color:var(--app-card-border)] bg-[color:var(--app-card)] p-6 shadow-[var(--app-shadow)]">

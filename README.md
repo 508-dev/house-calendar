@@ -15,6 +15,7 @@ It is built for the case where you want trusted people to know whether a room or
 - Supports one deployment with multiple houses, each with its own branding and parsing rules
 - Keeps the viewer experience read-only until stay requests have real notification or requester-auth support
 - Gives the owner a small self-hosted admin flow with password-based access and manual sync controls
+- Can optionally create events in an owner’s Google Calendar from admin or the API
 - Protects admin login with configurable app-level throttling and optional Cloudflare Turnstile
 
 ## Docs
@@ -39,8 +40,10 @@ Full setup, config, and day-to-day development commands live in [DEVELOPMENT.md]
 
 ## Creating Calendar Events
 
-Use your source calendar as the authoring surface. The app interprets those
-events into availability and a small amount of redacted viewer-facing context.
+Create events in your source calendar or enable the optional Google Calendar
+pilot to create them from admin or the API. Edit and delete events in the source
+calendar. The app interprets imported events into redacted availability.
+See [Google Calendar setup](./DEPLOYMENT.md#google-calendar-event-creation).
 
 - Use all-day events for stays and occupancy, such as `Someone stays (guest room)` or `Someone stays (whole house)`.
 - Use `crashes` as a stay keyword when that better matches the source calendar language, such as `Someone crashes (guest room)`.

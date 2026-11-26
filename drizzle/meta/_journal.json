@@ -15,6 +15,13 @@
       "when": 1778362722685,
       "tag": "0001_bright_cobalt_man",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795686002096,
+      "tag": "0002_google_calendar_connection",
+      "breakpoints": true
     }
   ]
 }
