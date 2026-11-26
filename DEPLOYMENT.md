@@ -118,6 +118,99 @@ ADMIN_TURNSTILE_SECRET_KEY=...
 The browser renders the site key on `/admin/login`, and the server validates
 `cf-turnstile-response` with Cloudflare before checking the password.
 
+## Google Calendar event creation
+
+### Create a Google OAuth project
+
+1. Sign in to Google Cloud as the Google account that owns the calendar. Open
+   [Personal mode onboarding](https://console.cloud.google.com/auth/overview/personal)
+   and create a new Personal mode project. Google keeps this project owner-only
+   and skips verification and the seven-day testing limit. An existing External
+   project cannot switch to Personal mode.
+2. Choose **Web application**. Add the exact authorized redirect URI for your
+   deployment, for example `https://house.example.com/admin/google-calendar/callback`.
+   For local development, use `http://127.0.0.1:<port>/admin/google-calendar/callback`
+   with the app port from `bun run ports`. Use that same browser origin when
+   connecting or creating events in admin.
+3. Save the generated client ID and client secret. In that project, enable the
+   **Google Calendar API** under **APIs & Services → Library**. Under **Google
+   Auth Platform → Data Access**, add
+   `https://www.googleapis.com/auth/calendar.events.owned` if prompted to define
+   the app’s requested scopes. This is the only scope requested by the app.
+4. In Google Calendar, open **Settings → Settings for my calendars → your
+   calendar → Integrate calendar**. Copy the **Calendar ID** and use the
+   **Secret address in iCal format** for the same calendar’s existing ICS
+   source. Keep both out of checked-in config. The ID must identify the calendar
+   explicitly, including for a primary calendar.
+
+Google documents the setup and the Personal audience restrictions in its
+[OAuth onboarding guide](https://support.google.com/cloud/answer/15544987#zippy=%2Cquick-setup-for-personal-use-personal-mode).
+
+### Enable writes for a house
+
+Set the deployment variables below. Generate a 32-byte hex key with
+`openssl rand -hex 32` and keep it stable across deploys. Generate a separate
+random API token for each allowed house with the same command. Omit the API
+token env var reference for browser-only access.
+
+```bash
+GOOGLE_CALENDAR_CLIENT_ID=...
+GOOGLE_CALENDAR_CLIENT_SECRET=...
+GOOGLE_CALENDAR_OAUTH_REDIRECT_URI=https://house.example.com/admin/google-calendar/callback
+GOOGLE_CALENDAR_TOKEN_KEY=...
+GOOGLE_CALENDAR_ID_TOKYO=...
+GOOGLE_CALENDAR_API_TOKEN_TOKYO=...
+```
+
+Add this to the applicable entry in `sites` in `config/config.json`. Set
+`icsSourceId` to the ID in that house’s `calendars` list for the same calendar.
+
+```json
+{
+  "googleCalendarWrite": {
+    "icsSourceId": "primary",
+    "calendarIdEnvVar": "GOOGLE_CALENDAR_ID_TOKYO",
+    "apiTokenEnvVar": "GOOGLE_CALENDAR_API_TOKEN_TOKYO"
+  }
+}
+```
+
+Apply the additive Google Calendar SQL migration in `drizzle/` before enabling
+the pilot. On an existing database where the app created the admin tables,
+apply just the new migration with `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f
+drizzle/0002_google_calendar_connection.sql`. A local development database can
+use `bun run db:push`.
+
+Open the house’s admin page, choose **Connect Google Calendar**, and approve
+event access. This grant is shared across enabled houses. If it is revoked,
+choose **Reconnect Google Calendar**. Disconnecting disables writes for all
+houses and leaves their availability feeds active. Rotating the encryption key
+requires reconnecting.
+
+### API usage
+
+`POST /api/sites/{siteId}/events` accepts JSON and the house’s API bearer token.
+Supply a new UUID in `Idempotency-Key` for each intended event. On a timeout,
+retry the same body and key against the same house and calendar. A new event
+returns `201` and a replay returns `200`, both with `eventId` and `eventUrl`.
+Reusing a key with different event data returns `409`. Failures return
+`error.code` and `error.message`.
+
+```bash
+curl --fail-with-body https://house.example.com/api/sites/tokyo/events \\
+  -H "Authorization: Bearer $GOOGLE_CALENDAR_API_TOKEN_TOKYO" \\
+  -H "Idempotency-Key: $EVENT_REQUEST_UUID" \\
+  -H 'Content-Type: application/json' \\
+  --data '{"title":"Someone stays (guest room)","startDate":"2026-12-04","checkoutDate":"2026-12-06"}'
+```
+
+For timed events, supply `startDateTime` and `endDateTime` with RFC 3339 offsets
+and optionally `showAsViewerNote: true`. The default is private. Both event
+types accept an optional `description`. Google Calendar shows checkout day
+for houses using `checkout_day` while availability ends the night before.
+The viewer updates when Google publishes the event to ICS and the house’s
+feed is fetched again.
+
 ## App Config
 
 Do not rely on `config/config.example.json` as your real deployment config.

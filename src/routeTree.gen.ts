@@ -22,8 +22,11 @@ import { Route as AdminSiteIdRouteImport } from './routes/admin/$siteId'
 import { Route as SiteIdViewerAccessRouteImport } from './routes/$siteId/viewer-access'
 import { Route as AdminSetupSubmitRouteImport } from './routes/admin/setup/submit'
 import { Route as AdminLoginSubmitRouteImport } from './routes/admin/login/submit'
+import { Route as AdminGoogleCalendarCallbackRouteImport } from './routes/admin/google-calendar/callback'
 import { Route as AdminSiteIdSyncRouteImport } from './routes/admin/$siteId/sync'
 import { Route as AdminSiteIdPasswordRouteImport } from './routes/admin/$siteId/password'
+import { Route as AdminSiteIdGoogleCalendarRouteImport } from './routes/admin/$siteId/google-calendar'
+import { Route as ApiSitesSiteIdEventsRouteImport } from './routes/api/sites/$siteId/events'
 
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
@@ -90,6 +93,12 @@ const AdminLoginSubmitRoute = AdminLoginSubmitRouteImport.update({
   path: '/submit',
   getParentRoute: () => AdminLoginRoute,
 } as any)
+const AdminGoogleCalendarCallbackRoute =
+  AdminGoogleCalendarCallbackRouteImport.update({
+    id: '/google-calendar/callback',
+    path: '/google-calendar/callback',
+    getParentRoute: () => AdminRoute,
+  } as any)
 const AdminSiteIdSyncRoute = AdminSiteIdSyncRouteImport.update({
   id: '/sync',
   path: '/sync',
@@ -99,6 +108,17 @@ const AdminSiteIdPasswordRoute = AdminSiteIdPasswordRouteImport.update({
   id: '/password',
   path: '/password',
   getParentRoute: () => AdminSiteIdRoute,
+} as any)
+const AdminSiteIdGoogleCalendarRoute =
+  AdminSiteIdGoogleCalendarRouteImport.update({
+    id: '/google-calendar',
+    path: '/google-calendar',
+    getParentRoute: () => AdminSiteIdRoute,
+  } as any)
+const ApiSitesSiteIdEventsRoute = ApiSitesSiteIdEventsRouteImport.update({
+  id: '/api/sites/$siteId/events',
+  path: '/api/sites/$siteId/events',
+  getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
@@ -113,10 +133,13 @@ export interface FileRoutesByFullPath {
   '/api/demo': typeof ApiDemoRoute
   '/api/health': typeof ApiHealthRoute
   '/admin/': typeof AdminIndexRoute
+  '/admin/$siteId/google-calendar': typeof AdminSiteIdGoogleCalendarRoute
   '/admin/$siteId/password': typeof AdminSiteIdPasswordRoute
   '/admin/$siteId/sync': typeof AdminSiteIdSyncRoute
+  '/admin/google-calendar/callback': typeof AdminGoogleCalendarCallbackRoute
   '/admin/login/submit': typeof AdminLoginSubmitRoute
   '/admin/setup/submit': typeof AdminSetupSubmitRoute
+  '/api/sites/$siteId/events': typeof ApiSitesSiteIdEventsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -129,10 +152,13 @@ export interface FileRoutesByTo {
   '/api/demo': typeof ApiDemoRoute
   '/api/health': typeof ApiHealthRoute
   '/admin': typeof AdminIndexRoute
+  '/admin/$siteId/google-calendar': typeof AdminSiteIdGoogleCalendarRoute
   '/admin/$siteId/password': typeof AdminSiteIdPasswordRoute
   '/admin/$siteId/sync': typeof AdminSiteIdSyncRoute
+  '/admin/google-calendar/callback': typeof AdminGoogleCalendarCallbackRoute
   '/admin/login/submit': typeof AdminLoginSubmitRoute
   '/admin/setup/submit': typeof AdminSetupSubmitRoute
+  '/api/sites/$siteId/events': typeof ApiSitesSiteIdEventsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -147,10 +173,13 @@ export interface FileRoutesById {
   '/api/demo': typeof ApiDemoRoute
   '/api/health': typeof ApiHealthRoute
   '/admin/': typeof AdminIndexRoute
+  '/admin/$siteId/google-calendar': typeof AdminSiteIdGoogleCalendarRoute
   '/admin/$siteId/password': typeof AdminSiteIdPasswordRoute
   '/admin/$siteId/sync': typeof AdminSiteIdSyncRoute
+  '/admin/google-calendar/callback': typeof AdminGoogleCalendarCallbackRoute
   '/admin/login/submit': typeof AdminLoginSubmitRoute
   '/admin/setup/submit': typeof AdminSetupSubmitRoute
+  '/api/sites/$siteId/events': typeof ApiSitesSiteIdEventsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -166,10 +195,13 @@ export interface FileRouteTypes {
     | '/api/demo'
     | '/api/health'
     | '/admin/'
+    | '/admin/$siteId/google-calendar'
     | '/admin/$siteId/password'
     | '/admin/$siteId/sync'
+    | '/admin/google-calendar/callback'
     | '/admin/login/submit'
     | '/admin/setup/submit'
+    | '/api/sites/$siteId/events'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -182,10 +214,13 @@ export interface FileRouteTypes {
     | '/api/demo'
     | '/api/health'
     | '/admin'
+    | '/admin/$siteId/google-calendar'
     | '/admin/$siteId/password'
     | '/admin/$siteId/sync'
+    | '/admin/google-calendar/callback'
     | '/admin/login/submit'
     | '/admin/setup/submit'
+    | '/api/sites/$siteId/events'
   id:
     | '__root__'
     | '/'
@@ -199,10 +234,13 @@ export interface FileRouteTypes {
     | '/api/demo'
     | '/api/health'
     | '/admin/'
+    | '/admin/$siteId/google-calendar'
     | '/admin/$siteId/password'
     | '/admin/$siteId/sync'
+    | '/admin/google-calendar/callback'
     | '/admin/login/submit'
     | '/admin/setup/submit'
+    | '/api/sites/$siteId/events'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -211,6 +249,7 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRouteWithChildren
   ApiDemoRoute: typeof ApiDemoRoute
   ApiHealthRoute: typeof ApiHealthRoute
+  ApiSitesSiteIdEventsRoute: typeof ApiSitesSiteIdEventsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -306,6 +345,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminLoginSubmitRouteImport
       parentRoute: typeof AdminLoginRoute
     }
+    '/admin/google-calendar/callback': {
+      id: '/admin/google-calendar/callback'
+      path: '/google-calendar/callback'
+      fullPath: '/admin/google-calendar/callback'
+      preLoaderRoute: typeof AdminGoogleCalendarCallbackRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/$siteId/sync': {
       id: '/admin/$siteId/sync'
       path: '/sync'
@@ -319,6 +365,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/$siteId/password'
       preLoaderRoute: typeof AdminSiteIdPasswordRouteImport
       parentRoute: typeof AdminSiteIdRoute
+    }
+    '/admin/$siteId/google-calendar': {
+      id: '/admin/$siteId/google-calendar'
+      path: '/google-calendar'
+      fullPath: '/admin/$siteId/google-calendar'
+      preLoaderRoute: typeof AdminSiteIdGoogleCalendarRouteImport
+      parentRoute: typeof AdminSiteIdRoute
+    }
+    '/api/sites/$siteId/events': {
+      id: '/api/sites/$siteId/events'
+      path: '/api/sites/$siteId/events'
+      fullPath: '/api/sites/$siteId/events'
+      preLoaderRoute: typeof ApiSitesSiteIdEventsRouteImport
+      parentRoute: typeof rootRouteImport
     }
   }
 }
@@ -335,11 +395,13 @@ const SiteIdRouteWithChildren =
   SiteIdRoute._addFileChildren(SiteIdRouteChildren)
 
 interface AdminSiteIdRouteChildren {
+  AdminSiteIdGoogleCalendarRoute: typeof AdminSiteIdGoogleCalendarRoute
   AdminSiteIdPasswordRoute: typeof AdminSiteIdPasswordRoute
   AdminSiteIdSyncRoute: typeof AdminSiteIdSyncRoute
 }
 
 const AdminSiteIdRouteChildren: AdminSiteIdRouteChildren = {
+  AdminSiteIdGoogleCalendarRoute: AdminSiteIdGoogleCalendarRoute,
   AdminSiteIdPasswordRoute: AdminSiteIdPasswordRoute,
   AdminSiteIdSyncRoute: AdminSiteIdSyncRoute,
 }
@@ -378,6 +440,7 @@ interface AdminRouteChildren {
   AdminLogoutRoute: typeof AdminLogoutRoute
   AdminSetupRoute: typeof AdminSetupRouteWithChildren
   AdminIndexRoute: typeof AdminIndexRoute
+  AdminGoogleCalendarCallbackRoute: typeof AdminGoogleCalendarCallbackRoute
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
@@ -386,6 +449,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminLogoutRoute: AdminLogoutRoute,
   AdminSetupRoute: AdminSetupRouteWithChildren,
   AdminIndexRoute: AdminIndexRoute,
+  AdminGoogleCalendarCallbackRoute: AdminGoogleCalendarCallbackRoute,
 }
 
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
@@ -396,6 +460,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRouteWithChildren,
   ApiDemoRoute: ApiDemoRoute,
   ApiHealthRoute: ApiHealthRoute,
+  ApiSitesSiteIdEventsRoute: ApiSitesSiteIdEventsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

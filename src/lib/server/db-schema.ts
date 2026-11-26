@@ -102,9 +102,31 @@ export const adminLoginAttempts = pgTable(
   ],
 );
 
+export const googleCalendarConnection = pgTable(
+  "google_calendar_connection",
+  {
+    id: integer("id").primaryKey(),
+    clientId: text("client_id"),
+    encryptedRefreshToken: text("encrypted_refresh_token"),
+    revision: text("revision").notNull(),
+    stateHash: text("state_hash"),
+    sessionHash: text("session_hash"),
+    pkceVerifier: text("pkce_verifier"),
+    siteId: text("site_id"),
+    stateExpiresAt: timestamp("state_expires_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+  },
+  (table) => [
+    check("google_calendar_connection_singleton", sql`${table.id} = 1`),
+  ],
+);
+
 export const schema = {
   adminBootstrapCodes,
   adminLoginAttempts,
   adminSessions,
   adminUsers,
+  googleCalendarConnection,
 };

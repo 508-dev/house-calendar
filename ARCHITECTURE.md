@@ -317,6 +317,14 @@ Tokyo and Taiwan cannot bleed together accidentally.
 
 Drizzle is the schema and query layer for Postgres. Current auth tables still self-initialize with explicit `create table if not exists` statements so fresh self-hosted installs work without a migration command. New persisted product tables should be added to `src/lib/server/db-schema.ts` first, with Drizzle migrations generated from that schema when runtime changes need durable migration history.
 
+The optional Google Calendar writer stores one deployment-wide owner grant in
+Postgres. The refresh token is encrypted with a deployment-managed key. The
+admin page and site-scoped bearer clients use the same server-side create
+operation. Each enabled site names an existing ICS source and its Google
+Calendar ID. Google owns the event record and the app invalidates the affected
+site’s ICS cache after a confirmed write. The existing ICS parser and redaction
+pipeline still determine what viewers see.
+
 ## 4. Server Runtime Helpers
 
 Location:

@@ -117,7 +117,8 @@ jobs:
 
   integration-test:
     name: Integration Test
-    runs-on: ubuntu-latest
+    # The locked Playwright release supports Ubuntu 24.04.
+    runs-on: ubuntu-24.04
     steps:
       - name: Harden runner
         uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2
